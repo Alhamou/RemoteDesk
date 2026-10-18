@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// hidden-while-connected) sharing window back.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if hostController != nil, !flag {
+            NSApp.unhide(nil)
             window.makeKeyAndOrderFront(nil)
             return false
         }
@@ -350,15 +351,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
 
-        // Hide the host window while a client is connected: it would show
-        // up in (and block part of) the shared screen, and closing it would
-        // kill the session. It comes back when the client disconnects, or
-        // when the host user clicks the Dock icon.
+        // Hide the whole app while a client is connected: the host window
+        // would show up inside (and block part of) the shared screen, and
+        // closing it would kill the session. NSApp.hide (NOT window.orderOut)
+        // — ordering out the last window lets macOS auto-terminate the app,
+        // which dropped every client instantly. Hidden apps stay alive and
+        // come back with a Dock-icon click.
         host.onClientConnected = { [weak self] _ in
-            self?.window.orderOut(nil)
+            NSApp.hide(nil)
         }
         host.onClientDisconnected = { [weak self] in
             guard let self, self.hostController != nil else { return }
+            NSApp.unhide(nil)
             self.window.makeKeyAndOrderFront(nil)
         }
 
