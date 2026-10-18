@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release DMG
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract Release Version
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building RemoteDesk release version: ${VERSION}"
+
+      - name: Install Packaging Utilities
+        run: |
+          brew install create-dmg
+
+      - name: Run Self-Tests & E2E Validation
+        run: |
+          swift test
+          ./scripts/e2e-test.sh
+
+      - name: Build Universal App & Release DMG
+        id: build_dmg
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}" ./scripts/build_dmg.sh "${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Generate Release Notes & Summary
+        id: release_notes
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          DMG_FILE="build/RemoteDesk-${VERSION}.dmg"
+          SHA_FILE="${DMG_FILE}.sha256"
+          CHECKSUM=$(cat "$SHA_FILE")
+
+          cat << 'EOF' > release_body.md
+          ## RemoteDesk v__VERSION__
+
+          Universal macOS application for low-latency Mac-to-Mac screen sharing and remote desktop control over your local network.
+
+          ### Downloads & Checksums
+          | File | Description | SHA256 Checksum |
+          |:---|:---|:---|
+          | `RemoteDesk-__VERSION__.dmg` | Universal DMG (Apple Silicon & Intel) | `__CHECKSUM__` |
+
+          ### Requirements
+          - macOS 14.0 (Sonoma) or newer on both host and client Macs
+          - Local network connectivity (Bonjour mDNS or direct IP)
+
+          ### Installation & Gatekeeper (Unsigned Release)
+          Because this release is not signed with a paid Apple Developer ID certificate:
+          1. Download and open `RemoteDesk-__VERSION__.dmg`.
+          2. Drag `RemoteDesk.app` to `/Applications`.
+          3. If macOS displays *"RemoteDesk cannot be opened because Apple cannot check it for malicious software"*:
+             - Right-click (or Control-click) `RemoteDesk.app` in `/Applications` and select **Open**, then click **Open** in the dialog.
+             - Or remove the quarantine attribute via Terminal:
+               ```bash
+               xattr -cr /Applications/RemoteDesk.app
+               ```
+
+          ### Required Permissions
+          - **Host**: Screen Recording + Accessibility (System Settings → Privacy & Security)
+          - **Client**: Accessibility (required only for full-screen "Capture All Input" mode)
+
+          ---
+          *Full Changelog: see [CHANGELOG.md](https://github.com/Alhamou/RemoteDesk/blob/main/CHANGELOG.md)*
+          EOF
+
+          sed -i '' "s/__VERSION__/${VERSION}/g" release_body.md
+          sed -i '' "s/__CHECKSUM__/${CHECKSUM}/g" release_body.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "RemoteDesk v${{ steps.get_version.outputs.VERSION }}"
+          body_path: release_body.md
+          draft: false
+          prerelease: false
+          files: |
+            build/RemoteDesk-${{ steps.get_version.outputs.VERSION }}.dmg
+            build/RemoteDesk-${{ steps.get_version.outputs.VERSION }}.dmg.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

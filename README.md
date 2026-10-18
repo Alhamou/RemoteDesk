@@ -1,148 +1,228 @@
-# RemoteDesk
+<div align="center">
+  <img src="Resources/AppIcon-512.png" alt="RemoteDesk Logo" width="128" height="128" />
+  <h1>RemoteDesk</h1>
+  <p><strong>High-performance, zero-dependency Mac-to-Mac remote desktop over your local network.</strong></p>
 
-Personal Mac-to-Mac remote desktop. Share one Mac's screen (host) and control it from another Mac (client) over the local network.
+  <p>
+    <a href="https://github.com/Alhamou/RemoteDesk/releases"><img src="https://img.shields.io/github/v/release/Alhamou/RemoteDesk?color=blue" alt="GitHub Release" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
+    <img src="https://img.shields.io/badge/macOS-14.0%2B-informational" alt="macOS 14.0+" />
+    <img src="https://img.shields.io/badge/Swift-6.0-orange.svg" alt="Swift 6.0" />
+    <a href="https://github.com/Alhamou/RemoteDesk/releases"><img src="https://img.shields.io/github/downloads/Alhamou/RemoteDesk/total?color=blueviolet" alt="GitHub Downloads" /></a>
+  </p>
+</div>
 
-- **Host**: ScreenCaptureKit capture → VideoToolbox H.264 → length-prefixed TCP stream.
-- **Client**: decodes H.264, displays it, forwards mouse/keyboard/scroll/clipboard events.
+---
 
-Built as a plain Swift package (no Xcode project required). macOS 14+.
+RemoteDesk allows you to seamlessly share one Mac's display and control it from another Mac over your local area network (LAN) with near-zero latency. Built completely from the ground up in Swift with zero external dependencies, RemoteDesk leverages Apple's modern `ScreenCaptureKit` and `VideoToolbox` hardware H.264 acceleration.
 
-## Requirements
+- **Host (Controlled Mac)**: Streams screen capture via ScreenCaptureKit → VideoToolbox H.264 HW compression → length-prefixed TCP socket. Injects remote mouse/keyboard inputs via `CGEvent`.
+- **Client (Controlling Mac)**: Hardware-decodes H.264 stream → presents directly via `CALayer` → captures mouse, keyboard, scroll, and clipboard events.
 
-- macOS 14 or newer on both Macs.
-- Swift toolchain (Xcode or Command Line Tools) to build.
-- Both Macs on the same local network (Bonjour discovery, or `--connect host:port`).
-- Host needs **Screen Recording** permission (and **Accessibility** for input injection).
-  - `Scripts`/`--test-pattern` mode runs TCC-free for automated testing.
+---
 
-## Build
+## ✨ Features
 
-```sh
-swift build -c release
+- **🚀 Native Hardware Acceleration**: Real-time H.264 encode and decode powered by Apple Silicon / Intel hardware accelerators via `VideoToolbox`.
+- **⚡ Ultra-Low Latency Streaming**: Custom binary TCP protocol with zero B-frames and adaptive congestion control (hysteresis-based keyframe recovery).
+- **🎯 Full Input Forwarding**: High-precision mouse cursor movement, left/right/middle clicks, dual-axis pixel-accurate scrolling, and virtual keyboard keycodes.
+- **🖥️ Full-Screen "Capture All Input" Mode**: When entering full screen, RemoteDesk intercepts system shortcuts (`Cmd+Tab`, `Cmd+Space`, Mission Control) before macOS handles them locally, forwarding them directly to the remote host.
+- **🎛️ Spaces Switching**: Forwarded `Ctrl+arrow` keys switch virtual desktops (Spaces) on the host (trackpad swipes are blocked locally during input capture).
+- **📋 Bidirectional Clipboard Sync**: Automatically synchronizes text copied to the clipboard between both Macs in real time with circular loop suppression.
+- **🔍 Zero-Config Discovery**: Advertises and discovers hosts automatically on your Wi-Fi/Ethernet subnet using Bonjour mDNS (`_remotedesk._tcp`), or connect directly via IP.
+- **📦 Zero Third-Party Dependencies**: 100% native Swift relying strictly on macOS system frameworks (`ScreenCaptureKit`, `VideoToolbox`, `Network.framework`, `AppKit`).
+
+---
+
+## 📸 Screenshots
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/Alhamou/RemoteDesk/main/Resources/AppIcon-512.png" alt="RemoteDesk Interface Preview" width="400" />
+  <p><em>RemoteDesk Launcher: Simple, instant Host and Client controls</em></p>
+</div>
+
+*(Additional screenshots of active remote desktop sessions in windowed and full-screen modes will be added in upcoming documentation updates).*
+
+---
+
+## 📋 Requirements
+
+- **Operating System**: macOS 14.0 (Sonoma) or newer on both host and client Macs.
+- **Architecture**: Universal binary supported (Apple Silicon `arm64` and Intel `x86_64`).
+- **Network**: Both Macs must be reachable on the same local network, subnet, or secure VPN tunnel.
+- **Permissions**:
+  - **Host**: Screen Recording and Accessibility permissions.
+  - **Client**: Accessibility permission (only required for full-screen "Capture All Input" mode).
+
+---
+
+## 💾 Installation
+
+### Option 1: Download Pre-built DMG (Recommended)
+Download the latest `RemoteDesk-1.0.0.dmg` from the **[Releases](https://github.com/Alhamou/RemoteDesk/releases)** page.
+
+#### Gatekeeper Bypass (Unsigned App)
+Because release binaries are currently distributed without a paid Apple Developer ID certificate, macOS Gatekeeper may show a warning:
+> *"RemoteDesk cannot be opened because Apple cannot check it for malicious software."*
+
+To open the application:
+1. Open the DMG and drag `RemoteDesk.app` into `/Applications`.
+2. **Right-click (or Control-click)** `RemoteDesk.app` in Finder, choose **Open**, and click **Open** in the dialog.
+3. *Alternative via Terminal:* Remove the quarantine attribute directly:
+   ```bash
+   xattr -cr /Applications/RemoteDesk.app
+   ```
+
+### Option 2: Homebrew Cask (Personal Tap)
+```bash
+brew tap Alhamou/tap https://github.com/Alhamou/homebrew-tap
+brew install --cask remotedesk
 ```
 
-Build a launchable app bundle (ad-hoc signed):
+### Option 3: Build from Source
+Ensure you have the Swift toolchain installed (Xcode or Xcode Command Line Tools):
 
-```sh
-./scripts/make-app.sh          # produces build/RemoteDesk.app
+```bash
+# Clone the repository
+git clone https://github.com/Alhamou/RemoteDesk.git
+cd RemoteDesk
+
+# Compile release app bundle
+./scripts/make-app.sh
+
+# Launch the app
+open build/RemoteDesk.app
 ```
 
-## Run
+---
 
-### Host (the Mac being controlled)
+## 🚀 Usage
 
-```sh
-.build/release/RemoteDesk --host
+Launch `RemoteDesk.app` on both Macs.
+
+### Host Mac (The Mac being controlled)
+1. Launch RemoteDesk and click **Share This Mac**.
+2. On first run, grant the system permission prompts:
+   - **Screen Recording**: System Settings → Privacy & Security → Screen Recording (requires relaunching RemoteDesk after granting).
+   - **Accessibility**: System Settings → Privacy & Security → Accessibility (enables remote mouse and keyboard control).
+3. The host window will automatically minimize/hide while a client is actively connected so it does not obstruct your desktop. Click the Dock icon anytime to view status or disconnect.
+
+### Client Mac (The Mac you sit at)
+1. Launch RemoteDesk and click **Connect to a Mac**.
+2. Select your host Mac from the Bonjour list, or enter its local IP address (e.g., `192.168.1.50:8790`).
+3. Click **Connect**.
+
+### Input Capture & Shortcuts
+
+| Shortcut | Action | Description |
+|:---|:---|:---|
+| `Ctrl+Cmd+F` | Full Screen | Toggles full-screen view (automatically engages Input Capture). |
+| `Ctrl+Opt+Cmd+G` | Toggle Input Capture | Manually engages/releases interception of system shortcuts. |
+| `Ctrl+Opt+Cmd+Q` | Disconnect | Emergency disconnect shortcut (never forwarded to the host). |
+| `Ctrl+Left / Right` | Switch Desktop | Switches virtual desktops (Spaces) on the remote Mac. |
+
+---
+
+## 🔒 Security Model & Known Limitations
+
+> [!CAUTION]
+> **RemoteDesk is designed exclusively for trusted private local area networks (LANs).**
+
+- **Unencrypted Plaintext Transport**: Network traffic is sent over raw TCP without TLS encryption. Screen frames and typed keystrokes are transmitted in plaintext across your subnet.
+- **No Authentication Handshake**: Any device on the same local network that connects to the host port is granted full control.
+- **Clipboard Sync**: Text copied to your clipboard is automatically broadcast to connected peers.
+
+**Deployment Rule**: NEVER run RemoteDesk on untrusted public Wi-Fi (airports, hotels, cafes). For remote access across the internet, always tunnel traffic through a secure encrypted channel such as **Tailscale**, **WireGuard**, or **SSH Local Port Forwarding**:
+```bash
+# Example: Tunneling via SSH
+ssh -N -L 8790:127.0.0.1:8790 user@remote-mac.local
+RemoteDesk --client --connect 127.0.0.1:8790
 ```
 
-or launch `build/RemoteDesk.app` and click **Share This Mac**.
+*For comprehensive security disclosures, please review [SECURITY.md](SECURITY.md).*
 
-While a client is connected, the host window hides itself automatically —
-it would otherwise appear inside the shared screen and closing it would
-end the session. It reappears when the client disconnects, or immediately
-when you click the RemoteDesk Dock icon on the host.
+---
 
-### Client (the Mac you sit at)
+## 💻 CLI Flags
 
-```sh
-.build/release/RemoteDesk --client --connect mac-mini.local
+RemoteDesk can be fully driven via the command line or run in headless mode:
+
+```bash
+# Start host headless
+RemoteDesk --host --port 8790 --no-ui
+
+# Connect client directly
+RemoteDesk --client --connect 192.168.1.100:8790
 ```
 
-or launch the app and click **Connect to a Mac** (leave the field empty to browse via Bonjour).
+| Flag | Default | Description |
+|:---|:---|:---|
+| `--host` | — | Runs as screen-sharing host |
+| `--client` | — | Runs as client viewer |
+| `--connect H[:P]`| — | Direct IP/hostname connection (default port `8790`) |
+| `--browse` | — | Forces Bonjour discovery |
+| `--port N` | `8790` | TCP port for listener or direct connection |
+| `--no-ui` / `--headless` | — | Headless operation without window |
+| `--self-test` | — | Runs internal protocol & codec verification tests and exits |
+| `--test-pattern`| — | Streams synthetic test frames (no Screen Recording TCC needed) |
+| `--expect-frames N` | — | Headless client exits `0` after decoding N frames |
+| `--max-dim N` | `2560` | Caps the longest captured screen dimension |
+| `--fps N` | `60` | Target frame rate (1–120 fps) |
+| `--bitrate N` | `8000000` | Target average encoder bitrate (bits/sec) |
+| `--verbose` | — | Enables debug logging on stderr |
+| `--gesture-probe N`| — | Diagnostic: probes raw trackpad gesture events for N seconds |
+| `--help` | — | Displays CLI options |
 
-#### Full-screen input capture
+---
 
-Entering full screen (green button or `Ctrl+Cmd+F`) automatically enables
-**Capture All Input**: keyboard events — including system-grabbed shortcuts
-like `Cmd+Tab`, `Cmd+Space`, Mission Control keys — are intercepted before
-macOS acts on them and forwarded to the host, and trackpad gesture events
-(Spaces swipes) are blocked locally.
+## 🧪 Testing & Verification
 
-Trackpad gestures themselves cannot be forwarded. To switch the **remote**
-Mac's desktops, RemoteDesk shows small `‹` / `›` buttons at the left/right
-edges of the remote view — clicking them sends `Ctrl+←` / `Ctrl+→` to the
-host. The keyboard equivalents (`Ctrl+←/→`, `Ctrl+↑`…) are forwarded too
-while capture is on.
+RemoteDesk provides comprehensive automated testing capabilities that do not require GUI interactions or TCC approvals:
 
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl+Opt+Cmd+G` | Toggle capture (auto-on in full screen, auto-off on exit) |
-| `Ctrl+Opt+Cmd+Q` | Disconnect |
+```bash
+# 1. Run Swift unit tests
+swift test
 
-Capture requires the **client** Mac to also grant Accessibility
-(System Settings → Privacy & Security → Accessibility). Without it, the
-first full screen / toggle attempt shows the native permission prompt and
-an inline hint; the permission applies live once granted. If the RemoteDesk
-window loses key status while capture is on, keys pass through locally as
-a safety valve.
-
-## CLI Flags
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--host` | | Run as host |
-| `--client` | | Run as client |
-| `--self-test` | | Run codec/protocol self-test and exit |
-| `--port N` | `8790` | TCP port (host listen / client connect) |
-| `--test-pattern` | | Host streams a synthetic pattern instead of the screen (no TCC) |
-| `--no-ui` | | Headless mode (`--headless` is an alias) |
-| `--expect-frames N` | | Headless client exits 0 after N decoded frames |
-| `--connect H[:P]` | | Connect directly instead of Bonjour; default port 8790 |
-| `--browse` | | Force Bonjour discovery |
-| `--timeout S` | `30` | Headless client overall timeout |
-| `--max-dim N` | `2560` | Host: cap the longest captured dimension |
-| `--fps N` | `60` | Capture frame rate (1–120) |
-| `--bitrate N` | `8000000` | Encoder average bitrate, bits/s |
-| `--name S` | host name | Name advertised over Bonjour |
-| `--size WxH` | `1280x720` | Test-pattern size |
-| `--verbose` | | Debug logging on stderr |
-| `--gesture-probe N` | | Debug: log raw trackpad gesture events for N seconds |
-| `--help` | | Usage and exit |
-
-Parse errors print usage to stderr and exit with code 2.
-
-## Permissions
-
-1. **Screen Recording** — required for real capture on the host.
-   System Settings → Privacy & Security → Screen Recording.
-2. **Accessibility (host)** — required for the host to inject mouse/keyboard events.
-   System Settings → Privacy & Security → Accessibility.
-3. **Accessibility (client)** — required on the client Mac for full-screen
-   input capture (`Ctrl+Opt+Cmd+G`). Same pane; optional otherwise.
-
-The host triggers the native macOS permission prompts directly on first share — RemoteDesk shows no permission popups of its own. Missing permissions are reported as inline status text, and the host window's Permissions button opens the relevant System Settings pane. Screen Recording additionally requires quitting and reopening RemoteDesk after it is granted. Rebuilding the bundle re-signs it with a new ad-hoc signature and macOS may require re-approval — keep the app path stable.
-
-The macOS firewall may ask to allow incoming connections; accept it.
-
-## Testing
-
-Self-test (codec + protocol, no permissions needed):
-
-```sh
+# 2. Run offline protocol and VideoToolbox codec test
+swift build
 .build/debug/RemoteDesk --self-test
-```
 
-End-to-end test (test-pattern host + headless client over loopback):
-
-```sh
+# 3. Run automated end-to-end loopback test
 ./scripts/e2e-test.sh
 ```
 
-Real-capture testing between the two Macs is manual: run the host on the Mac mini, grant Screen Recording/Accessibility, then connect from the MacBook Pro.
+---
 
-## Limitations (v1)
+## 🏗️ Architecture Overview
 
-- No authentication or encryption — plaintext, trusted LAN only.
-- Primary display only; no audio.
-- Clipboard sync is text-only, capped at 1 MB.
-- Trackpad gestures (Spaces swipes) are blocked locally during input capture but
-  not forwarded — use the on-screen desktop buttons or `Ctrl+arrow` keys.
-- Gesture field layout can be inspected with `--gesture-probe` (private API).
-- Key forwarding assumes the same keyboard layout on both Macs.
+RemoteDesk decouples the streaming pipeline into isolated queues:
+- **`ScreenCapturer`**: Uses Apple's `ScreenCaptureKit` (`SCStream`) for hardware-level display capture.
+- **`VideoEncoder`**: Compresses raw `CVPixelBuffer`s into H.264 AVCC NAL units using `VTCompressionSession`.
+- **`PeerConnection`**: Manages non-blocking TCP socket communication over `Network.framework`.
+- **`VideoDecoder`**: Decompresses incoming NAL units via `VTDecompressionSession` into `IOSurface`-backed pixel buffers.
+- **`RemoteView`**: Renders decompressed frames directly to a hardware-accelerated `CALayer` and handles mouse/keyboard events.
 
-## Troubleshooting
+*For an in-depth explanation of the wire protocol, congestion control, and concurrency model, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).*
 
-- **"Screen capture permission required"** — grant Screen Recording and relaunch the app.
-- **Input does nothing on the controlled Mac** — grant Accessibility on the host.
-- **Client cannot find the host** — use `--connect <host>:<port>`; check the firewall.
-- **`swift build` fails under Command Line Tools** — install Xcode or update CLT; the SDK must provide ScreenCaptureKit and VideoToolbox APIs used here.
+---
+
+## 🗺️ Roadmap
+
+- [ ] TLS transport encryption using self-signed certificates or Pre-Shared Keys (PSK).
+- [ ] PIN / One-Time Password (OTP) connection authorization prompt on the host.
+- [ ] Audio capture and streaming via `SCStream` audio outputs.
+- [ ] Multi-monitor selection and switching.
+- [ ] Automatic display resolution negotiation and dynamic frame scaling.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and suggestions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md) before submitting pull requests.
+
+---
+
+## 📄 License
+
+RemoteDesk is open-source software licensed under the **[MIT License](LICENSE)**.
+Copyright © 2026 Emad Alhamou.

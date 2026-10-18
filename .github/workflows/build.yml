@@ -1,0 +1,48 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Verify (macOS 14+)
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Print Swift & OS Environment
+        run: |
+          sw_vers
+          swift --version
+          uname -m
+
+      - name: Compile Universal Release Binary
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+
+      - name: Run Unit Tests
+        run: |
+          swift test
+
+      - name: Run Codec & Protocol Self-Test
+        run: |
+          swift build
+          .build/debug/RemoteDesk --self-test
+
+      - name: Run Headless Loopback End-to-End Test
+        run: |
+          ./scripts/e2e-test.sh
+
+      - name: Verify App Bundle Assembly
+        run: |
+          ./scripts/make-app.sh 1.0.0-ci
+          codesign -dvv build/RemoteDesk.app

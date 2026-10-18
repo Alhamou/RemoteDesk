@@ -13,6 +13,14 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]
+        ),
+        .testTarget(
+            name: "RemoteDeskTests",
+            dependencies: ["RemoteDesk"],
+            path: "Tests/RemoteDeskTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
         )
     ]
 )

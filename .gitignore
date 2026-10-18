@@ -1,16 +1,41 @@
-# Swift Package Manager
+# Swift Package Manager & Builds
 .build/
 .swiftpm/
 Package.resolved
 
-# Local builds & app bundles
+# Local Release Artifacts & App Bundles
 build/
 *.app/
 *.dSYM/
+*.dmg
+*.dmg.sha256
 
-# macOS system files
+# Xcode & Derived Data
+xcuserdata/
+DerivedData/
+*.xcworkspace/
+*.xcodeproj/
+*.mode1v3
+*.pbxuser
+
+# macOS System Files
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+
+# Security & Private Credentials
+secrets/
+*.env
+*.env.local
+*.key
+*.pem
+*.p12
+*.cer
+*.mobileprovision
+
+# Diagnostic & Scratch Logs
+*.log
+/tmp/rd-gesture-probe.log
+rd-gesture-probe.log

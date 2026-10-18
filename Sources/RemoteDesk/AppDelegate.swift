@@ -26,6 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let icon = Bundle.main.image(forResource: "AppIcon") ?? NSImage(named: "AppIcon") {
+            NSApplication.shared.applicationIconImage = icon
+        }
         setupMenu()
         createMainWindow()
 
@@ -357,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // — ordering out the last window lets macOS auto-terminate the app,
         // which dropped every client instantly. Hidden apps stay alive and
         // come back with a Dock-icon click.
-        host.onClientConnected = { [weak self] _ in
+        host.onClientConnected = { _ in
             NSApp.hide(nil)
         }
         host.onClientDisconnected = { [weak self] in
