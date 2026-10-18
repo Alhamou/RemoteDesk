@@ -33,69 +33,6 @@ final class RemoteView: NSView {
         videoLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         videoLayer.frame = bounds
         layer?.addSublayer(videoLayer)
-
-        setupDesktopButtons()
-    }
-
-    // MARK: - Desktop switch buttons
-    //
-    // Trackpad gestures cannot be forwarded, so small on-screen buttons at
-    // the left/right edges send the space-switch shortcut (Ctrl+←/→) to
-    // the host when clicked.
-
-    private func setupDesktopButtons() {
-        let prev = makeDesktopButton(symbol: "‹", tooltip: "Previous desktop on host (Ctrl+←)")
-        prev.action = #selector(prevDesktopClicked)
-        addSubview(prev)
-        NSLayoutConstraint.activate([
-            prev.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            prev.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-
-        let next = makeDesktopButton(symbol: "›", tooltip: "Next desktop on host (Ctrl+→)")
-        next.action = #selector(nextDesktopClicked)
-        addSubview(next)
-        NSLayoutConstraint.activate([
-            next.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            next.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-    }
-
-    private func makeDesktopButton(symbol: String, tooltip: String) -> NSButton {
-        let button = NSButton(title: symbol, target: self, action: nil)
-        button.font = .systemFont(ofSize: 18, weight: .semibold)
-        button.toolTip = tooltip
-        button.isBordered = false
-        button.wantsLayer = true
-        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
-        button.layer?.cornerRadius = 16
-        button.layer?.masksToBounds = true
-        button.contentTintColor = .white
-        button.refusesFirstResponder = true
-        button.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 32),
-            button.heightAnchor.constraint(equalToConstant: 32),
-        ])
-        return button
-    }
-
-    @objc private func prevDesktopClicked() {
-        sendSpaceSwitchToHost(keyCode: 123) // Ctrl+←
-    }
-
-    @objc private func nextDesktopClicked() {
-        sendSpaceSwitchToHost(keyCode: 124) // Ctrl+→
-    }
-
-    private func sendSpaceSwitchToHost(keyCode: UInt16) {
-        let control = UInt64(CGEventFlags.maskControl.rawValue)
-        controller?.sendKey(keyCode: keyCode, down: true, flags: control)
-        controller?.sendKey(keyCode: keyCode, down: false, flags: control)
-        // Keep keyboard focus on the remote view (buttons never take it).
-        if window?.firstResponder !== self {
-            window?.makeFirstResponder(self)
-        }
     }
 
     func setVideoDimensions(width: Int, height: Int) {
