@@ -200,7 +200,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func startBonjourDiscoveryForLauncher() {
         let descriptor = NWBrowser.Descriptor.bonjour(type: "_remotedesk._tcp", domain: nil)
-        let browser = NWBrowser(for: descriptor, using: .tcp)
+        let parameters = NWParameters()
+        parameters.includePeerToPeer = true
+        let browser = NWBrowser(for: descriptor, using: parameters)
         self.launcherBrowser = browser
 
         browser.browseResultsChangedHandler = { [weak self] results, _ in
@@ -296,12 +298,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
                 alert.messageText = "Screen Recording Permission Required"
-                alert.informativeText = "RemoteDesk needs Screen Recording permission to stream this Mac. Please enable RemoteDesk under System Settings → Privacy & Security → Screen Recording, then restart sharing."
+                alert.informativeText = "RemoteDesk needs Screen Recording permission to stream this Mac.\n\n1. In System Settings, ensure RemoteDesk is enabled.\n2. If it is already enabled, toggle it OFF and back ON (or remove it with '-' and re-add).\n3. IMPORTANT: You must Quit and Reopen RemoteDesk (Cmd+Q) for macOS to apply the permission."
                 alert.addButton(withTitle: "Open System Settings")
-                alert.addButton(withTitle: "OK")
+                alert.addButton(withTitle: "Quit RemoteDesk")
+                alert.addButton(withTitle: "Cancel")
                 let response = alert.runModal()
                 if response == .alertFirstButtonReturn {
                     self.openPermissions()
+                } else if response == .alertSecondButtonReturn {
+                    NSApp.terminate(nil)
                 }
             }
         }
@@ -327,21 +332,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         titleLabel.frame = NSRect(x: 90, y: 195, width: 320, height: 24)
         content.addSubview(titleLabel)
 
+        let ip = NetworkHelper.localIPv4() ?? "Unknown"
         let modeText = options.useTestPattern ? " (Synthetic Pattern)" : ""
-        let statusText = NSTextField(labelWithString: "Listening on port \(options.port)\(modeText)\nName: \(options.name)")
-        statusText.font = NSFont.systemFont(ofSize: 13)
+        let statusText = NSTextField(labelWithString: "Listening on port \(options.port)\(modeText)\nLocal IP: \(ip)\nConnect from other Mac: \(ip):\(options.port)")
+        statusText.font = NSFont.systemFont(ofSize: 12)
         statusText.textColor = .secondaryLabelColor
-        statusText.frame = NSRect(x: 90, y: 145, width: 320, height: 40)
+        statusText.frame = NSRect(x: 90, y: 130, width: 330, height: 55)
         content.addSubview(statusText)
 
         let permBtn = NSButton(title: "Permissions Settings...", target: self, action: #selector(openPermissions))
         permBtn.bezelStyle = .rounded
-        permBtn.frame = NSRect(x: 90, y: 95, width: 170, height: 30)
+        permBtn.frame = NSRect(x: 90, y: 88, width: 170, height: 30)
         content.addSubview(permBtn)
 
         let stopBtn = NSButton(title: "Stop Sharing", target: self, action: #selector(stopHostClicked))
         stopBtn.bezelStyle = .rounded
-        stopBtn.frame = NSRect(x: 90, y: 55, width: 130, height: 30)
+        stopBtn.frame = NSRect(x: 90, y: 48, width: 130, height: 30)
         content.addSubview(stopBtn)
 
         return content

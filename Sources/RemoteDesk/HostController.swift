@@ -66,6 +66,7 @@ final class HostController {
 
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
+        parameters.includePeerToPeer = true
         guard let port = NWEndpoint.Port(rawValue: options.port) else {
             Log.error("invalid port \(options.port)")
             exit(2)

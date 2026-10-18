@@ -22,6 +22,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
             completion(.failure(CaptureError.alreadyRunning))
             return
         }
+        if !CGPreflightScreenCaptureAccess() {
+            _ = CGRequestScreenCaptureAccess()
+            completion(.failure(CaptureError.permissionDenied))
+            return
+        }
         running = true
         Task { [weak self] in
             guard let self else { return }
@@ -114,11 +119,13 @@ extension ScreenCapturer {
     enum CaptureError: LocalizedError {
         case noDisplay
         case alreadyRunning
+        case permissionDenied
 
         var errorDescription: String? {
             switch self {
             case .noDisplay: return "no display available for capture"
             case .alreadyRunning: return "capture already running"
+            case .permissionDenied: return "Screen Recording permission is required. Please grant permission in System Settings → Privacy & Security → Screen Recording, then quit and reopen RemoteDesk (Cmd+Q)."
             }
         }
     }
