@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var connectAddressField: NSTextField?
     private var statusLabel: NSTextField?
     private var bonjourPopup: NSPopUpButton?
-    private var testPatternCheckbox: NSButton?
     private var discoveredEndpoints: [NWEndpoint] = []
     private var launcherBrowser: NWBrowser?
 
@@ -179,11 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         shareButton.frame = NSRect(x: 30, y: 180, width: 140, height: 30)
         content.addSubview(shareButton)
 
-        let testPatternCheck = NSButton(checkboxWithTitle: "Synthetic test pattern", target: nil, action: nil)
-        testPatternCheck.frame = NSRect(x: 185, y: 184, width: 180, height: 20)
-        content.addSubview(testPatternCheck)
-        self.testPatternCheckbox = testPatternCheck
-
         // Separator
         let sep2 = NSBox(frame: NSRect(x: 30, y: 165, width: 440, height: 1))
         sep2.boxType = .separator
@@ -280,9 +274,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func startHostClicked() {
         var opts = options
         opts.mode = .host
-        if let check = testPatternCheckbox, check.state == .on {
-            opts.useTestPattern = true
-        }
         beginHostMode(options: opts)
     }
 
