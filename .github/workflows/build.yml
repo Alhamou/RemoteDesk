@@ -27,7 +27,13 @@ jobs:
 
       - name: Compile Universal Release Binary
         run: |
-          swift build -c release --arch arm64 --arch x86_64
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+          mkdir -p .build/universal
+          lipo -create -output .build/universal/RemoteDesk \
+            .build/arm64-apple-macosx/release/RemoteDesk \
+            .build/x86_64-apple-macosx/release/RemoteDesk
+          lipo -info .build/universal/RemoteDesk
 
       - name: Run Unit Tests
         run: |

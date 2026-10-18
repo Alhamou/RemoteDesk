@@ -12,20 +12,27 @@ INSTALL="${INSTALL:-0}"
 
 echo "==> Building RemoteDesk v${VERSION} (universal arm64 + x86_64)..."
 
-# Build universal release binary
-swift build -c release --arch arm64 --arch x86_64
+# Build universal release binary using lipo
+swift build -c release --arch arm64
+swift build -c release --arch x86_64
+
+mkdir -p .build/universal
+lipo -create -output .build/universal/RemoteDesk \
+    .build/arm64-apple-macosx/release/RemoteDesk \
+    .build/x86_64-apple-macosx/release/RemoteDesk
 
 APP="build/RemoteDesk.app"
-BIN_UNIVERSAL=".build/apple/Products/Release/RemoteDesk"
-BIN_SINGLE=".build/release/RemoteDesk"
+BIN=".build/universal/RemoteDesk"
 
-if [[ -f "$BIN_UNIVERSAL" ]]; then
-    BIN="$BIN_UNIVERSAL"
-elif [[ -f "$BIN_SINGLE" ]]; then
-    BIN="$BIN_SINGLE"
-else
-    echo "Error: Compiled binary not found." >&2
-    exit 1
+if [[ ! -f "$BIN" ]]; then
+    if [[ -f ".build/apple/Products/Release/RemoteDesk" ]]; then
+        BIN=".build/apple/Products/Release/RemoteDesk"
+    elif [[ -f ".build/release/RemoteDesk" ]]; then
+        BIN=".build/release/RemoteDesk"
+    else
+        echo "Error: Compiled binary not found." >&2
+        exit 1
+    fi
 fi
 
 echo "==> Assembling app bundle at $APP..."

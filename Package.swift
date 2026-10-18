@@ -6,6 +6,9 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
+    products: [
+        .executable(name: "RemoteDesk", targets: ["RemoteDesk"])
+    ],
     targets: [
         .executableTarget(
             name: "RemoteDesk",
