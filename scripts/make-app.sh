@@ -52,13 +52,22 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 # Otherwise check for a local Apple Development certificate to keep TCC permissions stable
 # Fall back to ad-hoc signing (-)
 IDENTITY="${CODESIGN_IDENTITY:-}"
+IS_DEV_ID=0
 
 if [[ -z "$IDENTITY" ]]; then
-    IDENTITY=$(security find-identity -p codesigning -v 2>/dev/null | grep "Apple Development" | grep -v "REVOKED" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+    CERT_LINE=$(security find-identity -p codesigning -v 2>/dev/null | grep -E "Developer ID Application|Apple Development" | grep -v "REVOKED" | head -n 1 || true)
+    if [[ -n "$CERT_LINE" ]]; then
+        IDENTITY=$(echo "$CERT_LINE" | awk '{print $2}')
+        if echo "$CERT_LINE" | grep -q "Developer ID Application"; then
+            IS_DEV_ID=1
+        fi
+    fi
+elif [[ "$IDENTITY" == *"Developer ID Application"* ]]; then
+    IS_DEV_ID=1
 fi
 
 if [[ -n "$IDENTITY" ]]; then
-    if [[ "$IDENTITY" == *"Developer ID Application"* ]]; then
+    if [[ "$IS_DEV_ID" == "1" ]]; then
         echo "==> Signing with Developer ID Application: $IDENTITY (Hardened Runtime)"
         codesign --force --options runtime --sign "$IDENTITY" --timestamp "$APP"
     else
