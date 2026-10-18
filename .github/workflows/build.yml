@@ -12,8 +12,8 @@ concurrency:
 
 jobs:
   build:
-    name: Build & Verify (macOS 14+)
-    runs-on: macos-14
+    name: Build & Verify (macOS 15 / Swift 6)
+    runs-on: macos-15
 
     steps:
       - name: Check out repository

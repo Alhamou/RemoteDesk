@@ -11,7 +11,7 @@ permissions:
 jobs:
   release:
     name: Build & Publish Release DMG
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Check out repository
@@ -44,7 +44,7 @@ jobs:
           VERSION="${{ steps.get_version.outputs.VERSION }}"
           DMG_FILE="build/RemoteDesk-${VERSION}.dmg"
           SHA_FILE="${DMG_FILE}.sha256"
-          CHECKSUM=$(cat "$SHA_FILE")
+          CHECKSUM=$(awk '{print $1}' "$SHA_FILE")
 
           cat << 'EOF' > release_body.md
           ## RemoteDesk v__VERSION__
