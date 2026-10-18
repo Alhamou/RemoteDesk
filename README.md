@@ -51,19 +51,13 @@ Entering full screen (green button or `Ctrl+Cmd+F`) automatically enables
 **Capture All Input**: keyboard events — including system-grabbed shortcuts
 like `Cmd+Tab`, `Cmd+Space`, Mission Control keys — are intercepted before
 macOS acts on them and forwarded to the host, and trackpad gesture events
-(Spaces swipes) are blocked locally. Three/four-finger swipes are decoded
-from the raw gesture stream and re-fired on the host as their keyboard
-equivalents, so they switch the **remote** Mac's desktops:
+(Spaces swipes) are blocked locally.
 
-| Gesture on client | Action on host |
-| --- | --- |
-| 3/4-finger swipe left / right | `Ctrl+←` / `Ctrl+→` — switch space |
-| 3/4-finger swipe up / down | `Ctrl+↑` (Mission Control) / `Ctrl+↓` (App Exposé) |
-
-The gesture field mapping was verified with `--gesture-probe` (logs raw
-type-29 events to stdout and `/tmp/rd-gesture-probe.log`); if swipes stop
-registering after a macOS update, re-run the probe and adjust the fields
-in `InputGrabber.handleSwipeGesture`.
+Trackpad gestures themselves cannot be forwarded. To switch the **remote**
+Mac's desktops, RemoteDesk shows small `‹` / `›` buttons at the left/right
+edges of the remote view — clicking them sends `Ctrl+←` / `Ctrl+→` to the
+host. The keyboard equivalents (`Ctrl+←/→`, `Ctrl+↑`…) are forwarded too
+while capture is on.
 
 | Shortcut | Action |
 | --- | --- |
@@ -136,10 +130,9 @@ Real-capture testing between the two Macs is manual: run the host on the Mac min
 - No authentication or encryption — plaintext, trusted LAN only.
 - Primary display only; no audio.
 - Clipboard sync is text-only, capped at 1 MB.
-- Trackpad gestures are re-fired as keyboard equivalents during input capture
-  (swipe = Ctrl+arrows); raw gesture forwarding is not supported by the protocol.
-- Gesture decoding uses private CGEvent fields (mapped empirically); verify with
-  `--gesture-probe` after major macOS updates.
+- Trackpad gestures (Spaces swipes) are blocked locally during input capture but
+  not forwarded — use the on-screen desktop buttons or `Ctrl+arrow` keys.
+- Gesture field layout can be inspected with `--gesture-probe` (private API).
 - Key forwarding assumes the same keyboard layout on both Macs.
 
 ## Troubleshooting

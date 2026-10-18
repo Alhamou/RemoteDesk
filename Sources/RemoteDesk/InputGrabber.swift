@@ -11,9 +11,9 @@ import CoreGraphics
 ///
 /// Trackpad gesture events (the swipes macOS uses to switch Spaces /
 /// trigger Mission Control) are swallowed locally as well; they cannot be
-/// forwarded with the current protocol, so perform those actions on the
-/// remote via their keyboard equivalents (Ctrl+←/→, Ctrl+↑, F3 …), which
-/// are forwarded.
+/// forwarded with the current protocol — switch the remote's desktops via
+/// the on-screen buttons in RemoteView or the forwarded keyboard
+/// equivalents (Ctrl+←/→, Ctrl+↑…).
 ///
 /// Two combos are reserved and never forwarded:
 ///   - Ctrl+Opt+Cmd+G — release input (end capture mode)
@@ -114,61 +114,6 @@ final class InputGrabber {
         Log.info("input capture OFF")
     }
 
-    // MARK: - Trackpad swipe decoding (empirically mapped via --gesture-probe)
-    //
-    // kCGEventGesture (type 29) private fields, verified on macOS 26 (mini):
-    //   field 110 = gesture subtype; 6 = Spaces swipe (3- or 4-finger)
-    //   field 132 = phase: 1 = began, 2 = changed, 4 = ended
-    //   field 113 = double, per-frame x delta in px (+right / −left)
-    //   field 119 = double, velocity along dominant axis (+right/up, −left/down)
-
-    private static let swipeSubtypeField = CGEventField(rawValue: 110)!
-    private static let swipePhaseField = CGEventField(rawValue: 132)!
-    private static let swipeDXField = CGEventField(rawValue: 113)!
-    private static let swipeVelField = CGEventField(rawValue: 119)!
-
-    private var swipeDX = 0.0
-    private var swipeVel = 0.0
-
-    /// Pixels of horizontal travel required to count as a spaces swipe.
-    private static let horizontalThreshold = 60.0
-    /// Fallback velocity for (near-)vertical swipes: Mission Control / App Exposé.
-    private static let verticalThreshold = 25.0
-
-    private func handleSwipeGesture(_ event: CGEvent) {
-        guard event.getIntegerValueField(Self.swipeSubtypeField) == 6 else { return }
-        let phase = event.getIntegerValueField(Self.swipePhaseField)
-        switch phase {
-        case 1: // began
-            swipeDX = 0
-            swipeVel = 0
-        case 2: // changed
-            swipeDX += event.getDoubleValueField(Self.swipeDXField)
-            swipeVel = event.getDoubleValueField(Self.swipeVelField)
-        case 4: // ended (final frame carries a small fling delta, not velocity)
-            swipeDX += event.getDoubleValueField(Self.swipeDXField)
-            fireRemoteSwipe()
-        default:
-            break
-        }
-    }
-
-    /// Translates a finished swipe into the matching space-switch keys on
-    /// the host: Ctrl+←/→ (switch space), Ctrl+↑ (Mission Control),
-    /// Ctrl+↓ (App Exposé).
-    private func fireRemoteSwipe() {
-        let control = UInt64(CGEventFlags.maskControl.rawValue)
-        func key(_ keyCode: Int64) {
-            controller?.sendKey(keyCode: UInt16(clamping: keyCode), down: true, flags: control)
-            controller?.sendKey(keyCode: UInt16(clamping: keyCode), down: false, flags: control)
-        }
-        if abs(swipeDX) >= Self.horizontalThreshold {
-            key(swipeDX > 0 ? 124 : 123) // → / ←
-        } else if abs(swipeVel) >= Self.verticalThreshold {
-            key(swipeVel > 0 ? 126 : 125) // ↑ Mission Control / ↓ App Exposé
-        }
-    }
-
     // MARK: - Event handling (runs on the main run loop)
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -236,13 +181,11 @@ final class InputGrabber {
             return nil
 
         default:
-            // Trackpad gestures: never forwarded raw, never acted on locally
-            // while captured. Spaces swipes are decoded and re-fired as
-            // Ctrl+arrow keys on the host instead.
+            // Trackpad gestures (Spaces swipes, Mission Control pinches…):
+            // never forwarded, and never acted on locally while captured.
+            // Switch the remote's desktops with the on-screen buttons in
+            // RemoteView or the forwarded Ctrl+arrow keys instead.
             if type == Self.gestureType, isActive {
-                if shouldCapture?() ?? true {
-                    handleSwipeGesture(event)
-                }
                 return nil
             }
             return Unmanaged.passRetained(event)
