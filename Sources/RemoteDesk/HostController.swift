@@ -263,7 +263,6 @@ final class HostController {
                 _ = state.peer.send(type: .videoConfig, payload: payload)
             }
             encoder?.forceKeyframe()
-            input?.promptIfNeeded()
         } catch {
             Log.warn("invalid hello from \(id.uuidString)")
         }

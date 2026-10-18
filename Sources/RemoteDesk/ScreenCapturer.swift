@@ -22,8 +22,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
             completion(.failure(CaptureError.alreadyRunning))
             return
         }
+        // The system permission request is owned by PermissionFlow (shown to
+        // the user with a prior explanation). Here we only verify: if the
+        // permission is not active we fail quietly without prompting, so no
+        // duplicate system dialog or overlapping alert ever appears.
         if !CGPreflightScreenCaptureAccess() {
-            _ = CGRequestScreenCaptureAccess()
             completion(.failure(CaptureError.permissionDenied))
             return
         }

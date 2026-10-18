@@ -1,20 +1,8 @@
 import Foundation
 import CoreGraphics
-import ApplicationServices
 
 final class InputInjector {
     private var lastLocation = CGEvent(source: nil)?.location ?? .zero
-    private var promptDone = false
-
-    func promptIfNeeded() {
-        guard !promptDone else { return }
-        promptDone = true
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [key: true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(options) {
-            Log.warn("accessibility permission not granted; input injection may not work")
-        }
-    }
 
     func mouseMoved(x: Float, y: Float, flags: UInt64) {
         guard let point = screenPoint(x: x, y: y) else { return }
