@@ -44,6 +44,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    /// Clicking the RemoteDesk Dock icon on the host brings the (possibly
+    /// hidden-while-connected) sharing window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if hostController != nil, !flag {
+            window.makeKeyAndOrderFront(nil)
+            return false
+        }
+        return true
+    }
+
     // MARK: - Menu Setup
 
     private func setupMenu() {
@@ -347,6 +357,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             DispatchQueue.main.async {
                 self?.handleHostCaptureError(error)
             }
+        }
+
+        // Hide the host window while a client is connected: it would show
+        // up in (and block part of) the shared screen, and closing it would
+        // kill the session. It comes back when the client disconnects, or
+        // when the host user clicks the Dock icon.
+        host.onClientConnected = { [weak self] _ in
+            self?.window.orderOut(nil)
+        }
+        host.onClientDisconnected = { [weak self] in
+            guard let self, self.hostController != nil else { return }
+            self.window.makeKeyAndOrderFront(nil)
         }
 
         host.start()

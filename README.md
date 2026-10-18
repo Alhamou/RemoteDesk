@@ -37,6 +37,11 @@ Build a launchable app bundle (ad-hoc signed):
 
 or launch `build/RemoteDesk.app` and click **Share This Mac**.
 
+While a client is connected, the host window hides itself automatically —
+it would otherwise appear inside the shared screen and closing it would
+end the session. It reappears when the client disconnects, or immediately
+when you click the RemoteDesk Dock icon on the host.
+
 ### Client (the Mac you sit at)
 
 ```sh

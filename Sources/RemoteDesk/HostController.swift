@@ -23,6 +23,10 @@ final class HostController {
     private var height: Int
 
     var onCaptureError: ((Error) -> Void)?
+    /// Fired on the main thread when the first client says hello.
+    var onClientConnected: ((_ name: String) -> Void)?
+    /// Fired on the main thread when the last helloed client disconnects.
+    var onClientDisconnected: (() -> Void)?
 
     private final class PeerState {
         let peer: PeerConnection
@@ -187,6 +191,11 @@ final class HostController {
         state.helloTimeout?.cancel()
         state.helloTimeout = nil
         Log.info("client \(state.name ?? id.uuidString) disconnected")
+        if state.helloed, !peers.values.contains(where: { $0.helloed }) {
+            DispatchQueue.main.async {
+                self.onClientDisconnected?()
+            }
+        }
     }
 
     private func handleFrame(_ frame: RawFrame, from id: UUID) {
@@ -257,8 +266,14 @@ final class HostController {
             state.helloTimeout?.cancel()
             state.helloTimeout = nil
             state.name = hello.name
+            let hadClients = peers.values.contains { $0.helloed }
             state.helloed = true
             Log.info("client '\(hello.name)' connected")
+            if !hadClients {
+                DispatchQueue.main.async {
+                    self.onClientConnected?(hello.name)
+                }
+            }
             if let payload = videoConfigPayload {
                 _ = state.peer.send(type: .videoConfig, payload: payload)
             }
