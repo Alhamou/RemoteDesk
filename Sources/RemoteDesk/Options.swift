@@ -5,6 +5,7 @@ enum RunMode {
     case host
     case client
     case selfTest
+    case gestureProbe
 }
 
 struct Options {
@@ -23,6 +24,7 @@ struct Options {
         var name = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     var testPatternSize: (width: Int, height: Int)?
     var verbose = false
+    var probeSeconds: Double = 20
 
     static let usage = """
     Usage: RemoteDesk [options]
@@ -31,6 +33,7 @@ struct Options {
       --host                  Share this Mac's screen
       --client                Connect to another Mac
       --self-test             Run offline self-tests and exit
+      --gesture-probe SECONDS Log raw gesture events (type 29) for debugging
 
     Options:
       --port N                TCP port to listen on (default 8790)
@@ -74,6 +77,13 @@ struct Options {
                 options.mode = .client
             case "--self-test":
                 options.mode = .selfTest
+            case "--gesture-probe":
+                let value = nextValue("--gesture-probe")
+                guard let parsed = Double(value), parsed > 0, parsed <= 300 else {
+                    fail("invalid --gesture-probe value '\(value)' (seconds, 1-300)")
+                }
+                options.probeSeconds = parsed
+                options.mode = .gestureProbe
             case "--port":
                 let value = nextValue("--port")
                 guard let parsed = UInt16(value), parsed > 0 else {

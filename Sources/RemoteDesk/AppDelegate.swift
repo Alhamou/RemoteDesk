@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             beginHostMode(options: options)
         case .client:
             transitionToClient(options: options)
-        case .launch, .selfTest:
+        case .launch, .selfTest, .gestureProbe:
             transitionToLauncher()
         }
     }

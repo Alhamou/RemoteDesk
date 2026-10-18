@@ -8,6 +8,9 @@ switch options.mode {
 case .selfTest:
     SelfTest.run()
 
+case .gestureProbe:
+    GestureProbe.run(seconds: options.probeSeconds)
+
 case .host:
     if options.noUI {
         let host = HostController(options: options)
