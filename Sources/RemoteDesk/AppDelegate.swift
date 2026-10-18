@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hostController: HostController?
     private var clientController: ClientController?
     private var remoteView: RemoteView?
+    private var inputGrabber: InputGrabber?
+    private var inputCaptureMenuItem: NSMenuItem?
+    private var clientBaseTitle = "RemoteDesk — Client"
 
     // Launcher UI controls
     private var connectAddressField: NSTextField?
@@ -29,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         switch options.mode {
         case .host:
-            transitionToHost(options: options)
+            beginHostMode(options: options)
         case .client:
             transitionToClient(options: options)
         case .launch, .selfTest:
@@ -52,6 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appName = ProcessInfo.processInfo.processName
         appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Reset Permissions...", action: #selector(resetPermissionsAction), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let hideOthers = NSMenuItem(title: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
@@ -66,6 +71,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(NSMenuItem.separator())
+        let fullScreenItem = NSMenuItem(
+            title: "Enter Full Screen",
+            action: #selector(NSWindow.toggleFullScreen(_:)),
+            keyEquivalent: "f"
+        )
+        fullScreenItem.keyEquivalentModifierMask = [.control, .command]
+        windowMenu.addItem(fullScreenItem)
+        let captureItem = NSMenuItem(
+            title: "Capture All Input",
+            action: #selector(toggleInputCaptureAction(_:)),
+            keyEquivalent: "g"
+        )
+        captureItem.keyEquivalentModifierMask = [.control, .option, .command]
+        windowMenu.addItem(captureItem)
+        self.inputCaptureMenuItem = captureItem
         windowMenuItem.submenu = windowMenu
 
         NSApp.mainMenu = mainMenu
@@ -252,7 +273,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if let check = testPatternCheckbox, check.state == .on {
             opts.useTestPattern = true
         }
-        transitionToHost(options: opts)
+        beginHostMode(options: opts)
+    }
+
+    /// Entry point for every UI host start (launcher button and `--host`).
+    /// Native macOS permission dialogs only — RemoteDesk adds no popups of
+    /// its own. Guidance appears as inline status text in the window.
+    private func beginHostMode(options: Options) {
+        if options.useTestPattern || options.noUI {
+            transitionToHost(options: options)
+            return
+        }
+        if options.mode == .host {
+            // Launched via `--host`: show the launcher first so status text
+            // has a place to appear.
+            transitionToLauncher()
+        }
+
+        guard PermissionFlow.screenRecordingGranted else {
+            // Native consent dialog only. Hosting starts after the user
+            // grants the permission and RemoteDesk relaunches.
+            PermissionFlow.requestScreenRecording()
+            statusLabel?.stringValue = "Screen Recording permission needed — allow RemoteDesk in System Settings → Privacy & Security, then quit and reopen RemoteDesk."
+            return
+        }
+
+        if !PermissionFlow.accessibilityGranted {
+            // Native consent dialog only; sharing starts immediately
+            // (view-only) and control activates live once granted.
+            PermissionFlow.requestAccessibility()
+        }
+        transitionToHost(options: options)
     }
 
     @objc private func connectClicked() {
@@ -294,20 +345,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         host.onCaptureError = { [weak self] error in
             DispatchQueue.main.async {
-                guard let self else { return }
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Screen Recording Permission Required"
-                alert.informativeText = "RemoteDesk needs Screen Recording permission to stream this Mac.\n\n1. In System Settings, ensure RemoteDesk is enabled.\n2. If it is already enabled, toggle it OFF and back ON (or remove it with '-' and re-add).\n3. IMPORTANT: You must Quit and Reopen RemoteDesk (Cmd+Q) for macOS to apply the permission."
-                alert.addButton(withTitle: "Open System Settings")
-                alert.addButton(withTitle: "Quit RemoteDesk")
-                alert.addButton(withTitle: "Cancel")
-                let response = alert.runModal()
-                if response == .alertFirstButtonReturn {
-                    self.openPermissions()
-                } else if response == .alertSecondButtonReturn {
-                    NSApp.terminate(nil)
-                }
+                self?.handleHostCaptureError(error)
             }
         }
 
@@ -334,15 +372,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let ip = NetworkHelper.localIPv4() ?? "Unknown"
         let modeText = options.useTestPattern ? " (Synthetic Pattern)" : ""
-        let statusText = NSTextField(labelWithString: "Listening on port \(options.port)\(modeText)\nLocal IP: \(ip)\nConnect from other Mac: \(ip):\(options.port)")
+        let controlText = PermissionFlow.accessibilityGranted ? "" : "\nControl: waiting for Accessibility permission"
+        let statusText = NSTextField(labelWithString: "Listening on port \(options.port)\(modeText)\nLocal IP: \(ip)\nConnect from other Mac: \(ip):\(options.port)\(controlText)")
         statusText.font = NSFont.systemFont(ofSize: 12)
         statusText.textColor = .secondaryLabelColor
-        statusText.frame = NSRect(x: 90, y: 130, width: 330, height: 55)
+        statusText.frame = NSRect(x: 90, y: 120, width: 330, height: 68)
         content.addSubview(statusText)
 
-        let permBtn = NSButton(title: "Permissions Settings...", target: self, action: #selector(openPermissions))
+        let permTitle = PermissionFlow.screenRecordingGranted && !PermissionFlow.accessibilityGranted
+            ? "Accessibility Settings…"
+            : "Permissions Settings…"
+        let permBtn = NSButton(title: permTitle, target: self, action: #selector(openPermissions))
         permBtn.bezelStyle = .rounded
-        permBtn.frame = NSRect(x: 90, y: 88, width: 170, height: 30)
+        permBtn.frame = NSRect(x: 90, y: 84, width: 190, height: 30)
         content.addSubview(permBtn)
 
         let stopBtn = NSButton(title: "Stop Sharing", target: self, action: #selector(stopHostClicked))
@@ -354,8 +396,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func openPermissions() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
+        // Open the pane for whatever is actually missing (screen first).
+        if !PermissionFlow.screenRecordingGranted {
+            PermissionFlow.openSettings(for: .screenRecording)
+        } else if !PermissionFlow.accessibilityGranted {
+            PermissionFlow.openSettings(for: .accessibility)
+        } else {
+            PermissionFlow.openSettings(for: .screenRecording)
+        }
+    }
+
+    /// Capture failed while hosting. Permission problems are reported as
+    /// inline status text (no popup); anything else is a plain error alert.
+    private func handleHostCaptureError(_ error: Error) {
+        let isPermissionError: Bool
+        if let captureError = error as? ScreenCapturer.CaptureError,
+           case .permissionDenied = captureError {
+            isPermissionError = true
+        } else {
+            isPermissionError = !PermissionFlow.screenRecordingGranted
+        }
+
+        hostController?.stop()
+        hostController = nil
+        transitionToLauncher()
+
+        if isPermissionError {
+            statusLabel?.stringValue = "Screen Recording permission needed — allow RemoteDesk in System Settings → Privacy & Security, then quit and reopen RemoteDesk."
+        } else {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Screen Sharing Stopped"
+            alert.informativeText = "Screen capture stopped unexpectedly: \(error.localizedDescription)"
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    @objc private func resetPermissionsAction() {
+        let bundleID = Bundle.main.bundleIdentifier ?? "local.remotedesk"
+        for service in ["ScreenCapture", "Accessibility"] {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            task.arguments = ["reset", service, bundleID]
+            try? task.run()
+            task.waitUntilExit()
+        }
+
+        self.hostController?.stop()
+        self.hostController = nil
+        self.transitionToLauncher()
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Permissions Reset"
+        alert.informativeText = "Screen Recording and Accessibility permissions have been reset in macOS.\n\nRemoteDesk will now quit and reopen. Click “Share This Mac” and follow the permission steps again."
+        alert.addButton(withTitle: "Quit & Reopen RemoteDesk")
+        alert.addButton(withTitle: "Not Now")
+        if alert.runModal() == .alertFirstButtonReturn {
+            PermissionFlow.relaunchApp()
         }
     }
 
@@ -384,13 +483,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         view.onDisconnectRequested = { [weak self] in
             self?.disconnectClient()
         }
+        view.onToggleInputCapture = { [weak self] in
+            self?.toggleInputCapture()
+        }
         window.contentView = view
         self.remoteView = view
+
+        // Input capture: keyboard events (incl. system shortcuts) are
+        // intercepted before macOS sees them and forwarded to the host.
+        let grabber = InputGrabber()
+        grabber.controller = client
+        grabber.onReserved = { [weak self] reserved in
+            // Defer: we are inside the event-tap callback, and the handlers
+            // tear the tap down (and may run a modal alert).
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch reserved {
+                case .releaseInput:
+                    self.setInputCapture(false)
+                    self.remoteView?.showHint("Local input restored — Ctrl+Opt+Cmd+G to capture again.")
+                case .disconnect:
+                    self.disconnectClient()
+                }
+            }
+        }
+        // Safety valve: if our window loses key status while capture is on,
+        // pass keys through instead of starving the rest of the session.
+        grabber.shouldCapture = { [weak self] in
+            guard let self, NSApp.isActive else { return false }
+            return NSApp.keyWindow?.contentView === self.remoteView
+        }
+        self.inputGrabber = grabber
 
         client.onConnected = { [weak self] width, height, hostName in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.window.title = "RemoteDesk — \(hostName) (\(width)x\(height)) [Ctrl+Opt+Cmd+Q to disconnect]"
+                self.clientBaseTitle = "RemoteDesk — \(hostName) (\(width)x\(height))"
+                self.refreshInputCaptureUI()
                 self.remoteView?.setVideoDimensions(width: Int(width), height: Int(height))
             }
         }
@@ -415,7 +544,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         client.start()
     }
 
+    // MARK: - Input Capture ("all input goes to the remote")
+
+    /// Capture engages automatically in full screen; Ctrl+Opt+Cmd+G toggles
+    /// it any time. Requires Accessibility on this (client) Mac.
+    private func toggleInputCapture() {
+        guard let grabber = inputGrabber else { return }
+        setInputCapture(!grabber.isActive)
+    }
+
+    @objc private func toggleInputCaptureAction(_ sender: Any?) {
+        toggleInputCapture()
+    }
+
+    private func setInputCapture(_ on: Bool) {
+        guard let grabber = inputGrabber else { return }
+        if on {
+            guard grabber.start() else {
+                PermissionFlow.requestAccessibility()
+                remoteView?.showHint("Capture All Input needs Accessibility permission on this Mac — allow RemoteDesk in System Settings → Privacy & Security, then press Ctrl+Opt+Cmd+G again.")
+                refreshInputCaptureUI()
+                return
+            }
+            remoteView?.showHint("All input now goes to the remote Mac — release: Ctrl+Opt+Cmd+G · disconnect: Ctrl+Opt+Cmd+Q")
+        } else {
+            grabber.stop()
+        }
+        refreshInputCaptureUI()
+    }
+
+    private func refreshInputCaptureUI() {
+        let active = inputGrabber?.isActive ?? false
+        inputCaptureMenuItem?.state = active ? .on : .off
+        if clientController != nil {
+            window.title = active
+                ? "\(clientBaseTitle) — input captured (Ctrl+Opt+Cmd+G to release)"
+                : clientBaseTitle
+        }
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        guard clientController != nil else { return }
+        setInputCapture(true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        guard let grabber = inputGrabber, grabber.isActive else { return }
+        grabber.stop()
+        refreshInputCaptureUI()
+        remoteView?.showHint("Exited full screen — local input restored.")
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleInputCaptureAction(_:)) {
+            return inputGrabber != nil
+        }
+        return true
+    }
+
     private func disconnectClient() {
+        inputGrabber?.stop()
+        inputGrabber = nil
         clientController?.stop()
         clientController = nil
         remoteView = nil
@@ -423,6 +612,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        inputGrabber?.stop()
+        inputGrabber = nil
         launcherBrowser?.cancel()
         launcherBrowser = nil
         hostController?.stop()

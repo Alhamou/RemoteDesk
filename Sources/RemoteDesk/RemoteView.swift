@@ -6,6 +6,7 @@ import VideoToolbox
 final class RemoteView: NSView {
     weak var controller: ClientController?
     var onDisconnectRequested: (() -> Void)?
+    var onToggleInputCapture: (() -> Void)?
 
     private let videoLayer = CALayer()
     private var trackingArea: NSTrackingArea?
@@ -152,10 +153,21 @@ final class RemoteView: NSView {
 
     override func keyDown(with event: NSEvent) {
         let fl = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // Disconnect shortcut: Ctrl + Opt + Cmd + Q (Q keycode is 12)
-        if fl == [.control, .option, .command] && event.keyCode == 12 {
-            onDisconnectRequested?()
-            return
+            .subtracting([.capsLock, .numericPad, .function])
+        // Reserved local shortcuts (never forwarded):
+        //   Ctrl + Opt + Cmd + Q (Q keycode 12) — disconnect
+        //   Ctrl + Opt + Cmd + G (G keycode 5)  — toggle input capture
+        if fl == [.control, .option, .command] {
+            switch event.keyCode {
+            case 12:
+                onDisconnectRequested?()
+                return
+            case 5:
+                onToggleInputCapture?()
+                return
+            default:
+                break
+            }
         }
         controller?.sendKey(keyCode: event.keyCode, down: true, flags: flags(from: event))
     }
@@ -181,6 +193,48 @@ final class RemoteView: NSView {
             isDown = false
         }
         controller?.sendKey(keyCode: event.keyCode, down: isDown, flags: flags(from: event))
+    }
+
+    // MARK: - Transient hint overlay
+
+    private var hintLabel: NSTextField?
+    private var hintDismissWorkItem: DispatchWorkItem?
+
+    /// Shows a short-lived message at the bottom of the remote view
+    /// (input-capture state changes, permission guidance…).
+    func showHint(_ text: String) {
+        let label: NSTextField
+        if let existing = hintLabel {
+            label = existing
+        } else {
+            let created = NSTextField(labelWithString: "")
+            created.alignment = .center
+            created.font = .systemFont(ofSize: 12, weight: .medium)
+            created.textColor = .white
+            created.wantsLayer = true
+            created.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.65).cgColor
+            created.layer?.cornerRadius = 6
+            created.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(created)
+            NSLayoutConstraint.activate([
+                created.centerXAnchor.constraint(equalTo: centerXAnchor),
+                created.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            ])
+            hintLabel = created
+            label = created
+        }
+        label.stringValue = text
+        label.sizeToFit()
+        label.frame.size.width += 20
+        label.frame.size.height += 8
+        label.isHidden = false
+
+        hintDismissWorkItem?.cancel()
+        let dismiss = DispatchWorkItem { [weak self] in
+            self?.hintLabel?.isHidden = true
+        }
+        hintDismissWorkItem = dismiss
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5, execute: dismiss)
     }
 
     private func normalizedPoint(from locationInWindow: NSPoint) -> (Float, Float)? {

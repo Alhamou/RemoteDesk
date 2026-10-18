@@ -45,6 +45,28 @@ or launch `build/RemoteDesk.app` and click **Share This Mac**.
 
 or launch the app and click **Connect to a Mac** (leave the field empty to browse via Bonjour).
 
+#### Full-screen input capture
+
+Entering full screen (green button or `Ctrl+Cmd+F`) automatically enables
+**Capture All Input**: keyboard events — including system-grabbed shortcuts
+like `Cmd+Tab`, `Cmd+Space`, Mission Control keys — are intercepted before
+macOS acts on them and forwarded to the host, and trackpad gesture events
+(Spaces swipes) are blocked locally. Trackpad gestures themselves cannot be
+forwarded; use their keyboard equivalents on the remote instead
+(`Ctrl+←/→` to switch desktops, `Ctrl+↑` / `F3` for Mission Control).
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+Opt+Cmd+G` | Toggle capture (auto-on in full screen, auto-off on exit) |
+| `Ctrl+Opt+Cmd+Q` | Disconnect |
+
+Capture requires the **client** Mac to also grant Accessibility
+(System Settings → Privacy & Security → Accessibility). Without it, the
+first full screen / toggle attempt shows the native permission prompt and
+an inline hint; the permission applies live once granted. If the RemoteDesk
+window loses key status while capture is on, keys pass through locally as
+a safety valve.
+
 ## CLI Flags
 
 | Flag | Default | Meaning |
@@ -73,10 +95,12 @@ Parse errors print usage to stderr and exit with code 2.
 
 1. **Screen Recording** — required for real capture on the host.
    System Settings → Privacy & Security → Screen Recording.
-2. **Accessibility** — required for the host to inject mouse/keyboard events.
+2. **Accessibility (host)** — required for the host to inject mouse/keyboard events.
    System Settings → Privacy & Security → Accessibility.
+3. **Accessibility (client)** — required on the client Mac for full-screen
+   input capture (`Ctrl+Opt+Cmd+G`). Same pane; optional otherwise.
 
-The host prompts for these on first run. Rebuilding the bundle re-signs it with a new ad-hoc signature and macOS may require re-approval — keep the app path stable.
+The host triggers the native macOS permission prompts directly on first share — RemoteDesk shows no permission popups of its own. Missing permissions are reported as inline status text, and the host window's Permissions button opens the relevant System Settings pane. Screen Recording additionally requires quitting and reopening RemoteDesk after it is granted. Rebuilding the bundle re-signs it with a new ad-hoc signature and macOS may require re-approval — keep the app path stable.
 
 The macOS firewall may ask to allow incoming connections; accept it.
 
@@ -101,7 +125,8 @@ Real-capture testing between the two Macs is manual: run the host on the Mac min
 - No authentication or encryption — plaintext, trusted LAN only.
 - Primary display only; no audio.
 - Clipboard sync is text-only, capped at 1 MB.
-- Some system shortcuts (e.g. Cmd+Tab, Cmd+Space) are not forwarded.
+- Trackpad gestures (Spaces swipes) are blocked locally during input capture but
+  not forwarded as gestures — use keyboard equivalents (`Ctrl+←/→`, `Ctrl+↑`).
 - Key forwarding assumes the same keyboard layout on both Macs.
 
 ## Troubleshooting
