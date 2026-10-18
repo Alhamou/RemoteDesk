@@ -13,6 +13,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN" "$APP/Contents/MacOS/RemoteDesk"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+if [[ -f Resources/AppIcon.icns ]]; then
+    cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Find a valid code signing identity (e.g. Apple Development)

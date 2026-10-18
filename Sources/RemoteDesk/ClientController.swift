@@ -17,6 +17,7 @@ final class ClientController {
 
     private var running = false
     private var decodedFrames = 0
+    private var connectionEstablished = false
     private var hostWidth: UInt32 = 0
     private var hostHeight: UInt32 = 0
     private var hostName: String = ""
@@ -180,6 +181,7 @@ final class ClientController {
     }
 
     private func peerReady() {
+        connectionEstablished = true
         Log.info("connection established, sending hello...")
         do {
             let hello = Messages.Hello(name: options.name)
@@ -201,8 +203,15 @@ final class ClientController {
                 exit(3)
             }
         } else {
+            let wasEstablished = connectionEstablished
             DispatchQueue.main.async { [weak self] in
-                self?.onDisconnected?("Connection closed by host")
+                guard let self else { return }
+                if wasEstablished {
+                    self.onDisconnected?("Connection closed by host")
+                } else {
+                    let target = self.options.connectHost ?? "the selected host"
+                    self.onDisconnected?("Could not connect to \(target) — no RemoteDesk host is listening. Make sure the other Mac is running RemoteDesk and has clicked “Share This Mac”.")
+                }
             }
         }
     }
