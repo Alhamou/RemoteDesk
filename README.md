@@ -61,7 +61,7 @@ RemoteDesk allows you to seamlessly share one Mac's display and control it from 
 ## 💾 Installation
 
 ### Option 1: Download Pre-built DMG (Recommended)
-Download the latest `RemoteDesk-1.0.0.dmg` from the **[Releases](https://github.com/Alhamou/RemoteDesk/releases)** page.
+Download the latest `RemoteDesk-1.1.0.dmg` from the **[Releases](https://github.com/Alhamou/RemoteDesk/releases)** page.
 
 #### Gatekeeper Bypass (Unsigned App)
 Because release binaries are currently distributed without a paid Apple Developer ID certificate, macOS Gatekeeper may show a warning:

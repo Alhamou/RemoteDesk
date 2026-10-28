@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-28
+
 ### Added
 - **Fit Remote to This Screen**: the client tells the host which display it is on; the host switches its resolution to the closest-matching mode (aspect ratio first) so full screen fills edge to edge, and restores the original resolution when the client leaves (or if RemoteDesk quits). Toggle: *Window → Match Remote Resolution to This Screen* (on by default).
 - **Trackpad gestures in full screen**: Spaces swipes, Mission Control, App Exposé and pinches are forwarded raw and replayed on the host, following this Mac's trackpad settings.
