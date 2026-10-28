@@ -48,7 +48,7 @@ swift test
 ### 4. Build and Test the Application Bundle
 ```bash
 ./scripts/make-app.sh
-open build/RemoteDesk.app
+open build/RemoteDesk.noindex/RemoteDesk.app
 ```
 
 > [!NOTE]

@@ -51,4 +51,4 @@ jobs:
       - name: Verify App Bundle Assembly
         run: |
           ./scripts/make-app.sh 1.0.0-ci
-          codesign -dvv build/RemoteDesk.app
+          codesign -dvv build/RemoteDesk.noindex/RemoteDesk.app

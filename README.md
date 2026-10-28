@@ -93,7 +93,7 @@ cd RemoteDesk
 ./scripts/make-app.sh
 
 # Launch the app
-open build/RemoteDesk.app
+open build/RemoteDesk.noindex/RemoteDesk.app
 ```
 
 ---

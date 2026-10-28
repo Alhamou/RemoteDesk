@@ -27,7 +27,9 @@ lipo -create -output .build/universal/RemoteDesk \
     .build/universal/RemoteDesk-x86_64
 lipo -info .build/universal/RemoteDesk
 
-APP="build/RemoteDesk.app"
+# Spotlight skips folders ending in .noindex, so this build copy does not show
+# up next to the installed /Applications/RemoteDesk.app.
+APP="build/RemoteDesk.noindex/RemoteDesk.app"
 BIN=".build/universal/RemoteDesk"
 
 if [[ ! -f "$BIN" ]]; then

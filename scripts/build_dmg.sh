@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${VERSION:-${1:-1.1.0}}"
-APP_PATH="build/RemoteDesk.app"
+APP_PATH="build/RemoteDesk.noindex/RemoteDesk.app"
 DMG_NAME="RemoteDesk-${VERSION}.dmg"
 DMG_PATH="build/${DMG_NAME}"
 SHA_PATH="build/${DMG_NAME}.sha256"
