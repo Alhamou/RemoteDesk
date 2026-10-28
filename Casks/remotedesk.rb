@@ -1,6 +1,6 @@
 cask "remotedesk" do
-  version "1.0.0"
-  sha256 "b23aa11e75f1d6c86dbdabfaa7b235df698416f9b2228b72dce3b03a269dd0f9"
+  version "1.1.0"
+  sha256 "91d3fb5c704d53bb42138c437cc9799374251b68e5e93bf1c704f8179dde0dc8"
 
   url "https://github.com/Alhamou/RemoteDesk/releases/download/v#{version}/RemoteDesk-#{version}.dmg"
   name "RemoteDesk"
