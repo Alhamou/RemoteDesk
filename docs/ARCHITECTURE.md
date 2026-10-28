@@ -109,6 +109,10 @@ All communication over TCP uses binary length-prefixed frames:
 | `11` | `requestKeyframe`| Client → Host | Empty payload |
 | `12` | `clipboard` | Both | `UInt8` kind (`0=plain text`) + `String` text (≤ 1 MB) |
 | `13` | `bye` | Both | Empty payload |
+| `14` | `displayInfo` | Client → Host | `UInt8` flags (`bit 0`: match host resolution) + `UInt32` pointWidth + `UInt32` pointHeight + `UInt32` pixelWidth + `UInt32` pixelHeight |
+| `15` | `gesture` | Client → Host | Raw `CGEvent` data (`CGEvent.data`, ≤ 64 KB) of a trackpad gesture (type 29) or Dock-control (type 30) event |
+
+Messages `14` and `15` are additive: peers that don't know a message type skip it, so older hosts and clients keep working.
 
 ---
 
@@ -138,13 +142,19 @@ In windowed mode, mouse clicks, movements, and standard keystrokes received by `
 When entering full-screen mode (or via `Ctrl+Opt+Cmd+G`), RemoteDesk installs an active session `CGEventTap` (`.cgSessionEventTap` at `.headInsertEventTap`):
 - Intercepts system shortcuts (`Cmd+Tab`, `Cmd+Space`, Mission Control keys) before macOS handles them locally.
 - Forwards them directly to the host while swallowing local execution.
-- Swallows local trackpad space gestures to prevent switching client desktops accidentally.
+- Swallows local trackpad gestures (types 29 / 30) and forwards them raw; the host decodes them with `CGEvent(withDataAllocator:data:)`, accepts only gesture types, and replays them, so Spaces swipes / Mission Control act on the remote Mac.
 - **Emergency Escape Hatches (never forwarded)**:
   - `Ctrl+Opt+Cmd+G`: Release input capture.
   - `Ctrl+Opt+Cmd+Q`: Disconnect session immediately.
   - Automatic release if RemoteDesk loses window focus.
 
 ---
+
+### Full-Screen Presentation
+The full-screen window uses `[.fullScreen, .autoHideMenuBar, .hideDock]`: the local Dock never appears, so the bottom and side edges reach the remote Mac; only the top edge reveals the local menu bar and title-bar buttons.
+
+### Fitting the Remote Screen to the Client
+After the first `helloAck` the client sends `displayInfo` (its screen size, minus the notch area). The host (`DisplayModeMatcher` + `DisplayFit`) switches its main display to the best-matching mode with `CGConfigureOption.forAppOnly` (macOS reverts it automatically if the app exits), restarts capture at the new size — never larger than the client's screen — and re-sends `helloAck` with the new dimensions. The original mode is restored when the last client disconnects.
 
 ## 6. Clipboard Synchronization
 

@@ -30,6 +30,14 @@ final class RemoteView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
 
         videoLayer.contentsGravity = .resizeAspect
+        // No implicit animations: every new frame and every resize must show
+        // immediately (the default 0.25 s cross-fade adds visible lag).
+        videoLayer.actions = [
+            "contents": NSNull(),
+            "bounds": NSNull(),
+            "position": NSNull(),
+            "frame": NSNull(),
+        ]
         videoLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         videoLayer.frame = bounds
         layer?.addSublayer(videoLayer)
@@ -41,10 +49,13 @@ final class RemoteView: NSView {
     }
 
     func display(imageBuffer: CVImageBuffer) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.videoLayer.contents = imageBuffer
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.display(imageBuffer: imageBuffer)
+            }
+            return
         }
+        videoLayer.contents = imageBuffer
     }
 
     override func layout() {
@@ -130,16 +141,20 @@ final class RemoteView: NSView {
         guard let (x, y) = normalizedPoint(from: event.locationInWindow) else { return }
         let f = flags(from: event)
         controller?.sendMouseMove(x: x, y: y, flags: f)
-        let button = UInt8(min(event.buttonNumber, 2))
-        controller?.sendMouseButton(button: button, down: true, flags: f)
+        controller?.sendMouseButton(button: Self.otherButton(event), down: true, flags: f)
     }
 
     override func otherMouseUp(with event: NSEvent) {
         guard let (x, y) = normalizedPoint(from: event.locationInWindow) else { return }
         let f = flags(from: event)
         controller?.sendMouseMove(x: x, y: y, flags: f)
-        let button = UInt8(min(event.buttonNumber, 2))
-        controller?.sendMouseButton(button: button, down: false, flags: f)
+        controller?.sendMouseButton(button: Self.otherButton(event), down: false, flags: f)
+    }
+
+    /// Middle (2) and side buttons (3 = back, 4 = forward, …) keep their real
+    /// number, so the host applies its own button settings to them.
+    private static func otherButton(_ event: NSEvent) -> UInt8 {
+        UInt8(clamping: max(2, min(event.buttonNumber, 31)))
     }
 
     override func scrollWheel(with event: NSEvent) {
@@ -248,8 +263,13 @@ final class RemoteView: NSView {
         let originX = (bounds.width - renderW) / 2.0
         let originY = (bounds.height - renderH) / 2.0
 
-        let normX = (local.x - originX) / renderW
-        let normY = (local.y - originY) / renderH
+        var normX = (local.x - originX) / renderW
+        var normY = (local.y - originY) / renderH
+        // The pointer never quite reaches the far edge of the picture (the
+        // last point maps just short of the remote's last pixel), so snap it:
+        // the remote's Dock, hot corners and edge triggers stay reachable.
+        if local.x >= originX + renderW - 1 { normX = 1 }
+        if local.y >= originY + renderH - 1 { normY = 1 }
         let clampedX = Float(min(max(normX, 0.0), 1.0))
         let clampedY = Float(min(max(normY, 0.0), 1.0))
         return (clampedX, clampedY)

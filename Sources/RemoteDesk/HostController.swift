@@ -21,6 +21,12 @@ final class HostController {
     private var running = false
     private var width: Int
     private var height: Int
+    /// The connected client's screen in pixels; the stream never exceeds it.
+    private var fitWithin: (width: Int, height: Int)?
+    /// Main-thread only.
+    private let displayMatcher = DisplayModeMatcher()
+    /// Lets the display settle after a mode switch before capture restarts.
+    private static let modeSwitchSettleDelay = 0.6
 
     var onCaptureError: ((Error) -> Void)?
     /// Fired on the main thread when the first client says hello.
@@ -151,6 +157,13 @@ final class HostController {
             clipboard = nil
             input = nil
             videoConfigPayload = nil
+            fitWithin = nil
+        }
+        let matcher = displayMatcher
+        if Thread.isMainThread {
+            matcher.restore()
+        } else {
+            DispatchQueue.main.async { matcher.restore() }
         }
     }
 
@@ -192,6 +205,7 @@ final class HostController {
         state.helloTimeout = nil
         Log.info("client \(state.name ?? id.uuidString) disconnected")
         if state.helloed, !peers.values.contains(where: { $0.helloed }) {
+            applyClientDisplay(nil)
             DispatchQueue.main.async {
                 self.onClientDisconnected?()
             }
@@ -253,6 +267,19 @@ final class HostController {
                 input?.key(keyCode: message.keyCode, down: message.down, flags: message.flags)
             } catch {
                 Log.warn("bad key from \(id.uuidString)")
+            }
+        case .displayInfo:
+            do {
+                applyClientDisplay(try Messages.parseDisplayInfo(frame.payload))
+            } catch {
+                Log.warn("bad display info from \(id.uuidString)")
+            }
+        case .gesture:
+            do {
+                let message = try Messages.parseGesture(frame.payload)
+                input?.gesture(eventData: message.eventData)
+            } catch {
+                Log.warn("bad gesture from \(id.uuidString)")
             }
         case .hello, .helloAck, .videoConfig, .videoFrame, .pong:
             Log.debug("unexpected \(type) message from client")
@@ -371,9 +398,11 @@ final class HostController {
 
     private func startCapture() {
         let capturer = ScreenCapturer(queue: captureQueue)
-        capturer.onFrame = { [weak self] pixelBuffer, presentationTime in
+        capturer.onFrame = { [weak self, weak capturer] pixelBuffer, presentationTime in
             guard let self else { return }
             self.queue.async {
+                // Drop late frames from a capture replaced by refreshCapture.
+                guard self.capturer === capturer else { return }
                 self.encoder?.encode(pixelBuffer: pixelBuffer, presentationTime: presentationTime)
             }
         }
@@ -388,7 +417,7 @@ final class HostController {
             }
         }
         self.capturer = capturer
-        capturer.start(fps: options.fps, maxDimension: options.maxDimension) { [weak self] result in
+        capturer.start(fps: options.fps, maxDimension: options.maxDimension, fitWithin: fitWithin) { [weak self] result in
             guard let self else { return }
             self.queue.async {
                 switch result {
@@ -406,6 +435,55 @@ final class HostController {
                 }
             }
         }
+    }
+
+    // MARK: - Fitting the shared screen to the client's display
+
+    /// Called on `queue` with the client's display (nil once the last client
+    /// left): matches the host's display mode to it when asked, sizes the
+    /// stream to the client's screen, and restarts capture if either
+    /// changed. The client learns the new size through a fresh helloAck.
+    private func applyClientDisplay(_ info: Messages.DisplayInfo?) {
+        guard capturer != nil else { return } // test pattern: fixed size
+        if let info, info.pixelWidth > 0, info.pixelHeight > 0 {
+            fitWithin = (Int(info.pixelWidth), Int(info.pixelHeight))
+        } else {
+            fitWithin = nil
+        }
+        let matcher = displayMatcher
+        DispatchQueue.main.async { [weak self] in
+            let modeChanged: Bool
+            if let info, info.matchResolution, info.pointWidth > 0, info.pointHeight > 0 {
+                modeChanged = matcher.match(
+                    pointWidth: Int(info.pointWidth),
+                    pointHeight: Int(info.pointHeight),
+                    preferHiDPI: info.pixelWidth > info.pointWidth
+                )
+            } else {
+                modeChanged = matcher.restore()
+            }
+            let delay = modeChanged ? Self.modeSwitchSettleDelay : 0
+            self?.queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.refreshCapture(force: modeChanged)
+            }
+        }
+    }
+
+    /// Restarts screen capture when the stream size would change (or
+    /// `force`, after a display mode switch). Runs on `queue`.
+    private func refreshCapture(force: Bool) {
+        guard running, let current = capturer else { return }
+        if !force {
+            guard let expected = ScreenCapturer.expectedSize(
+                displayID: CGMainDisplayID(),
+                maxDimension: options.maxDimension,
+                fitWithin: fitWithin
+            ), expected.width != width || expected.height != height else { return }
+        }
+        Log.info("restarting capture for the client's display")
+        current.stop()
+        capturer = nil
+        startCapture()
     }
 
     private func updateDimensions(width newWidth: Int, height newHeight: Int) {

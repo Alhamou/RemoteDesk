@@ -11,7 +11,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var remoteView: RemoteView?
     private var inputGrabber: InputGrabber?
     private var inputCaptureMenuItem: NSMenuItem?
+    private var matchResolutionMenuItem: NSMenuItem?
     private var clientBaseTitle = "RemoteDesk — Client"
+    private var remoteVideoSize: NSSize?
+    private var lastSentDisplayInfo: Messages.DisplayInfo?
+
+    private static let matchResolutionDefaultsKey = "matchRemoteResolution"
+
+    /// Switch the remote Mac's resolution to fit this Mac's screen (on by
+    /// default; Window → Match Remote Resolution to This Screen).
+    private var matchRemoteResolution: Bool {
+        get { UserDefaults.standard.object(forKey: Self.matchResolutionDefaultsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.matchResolutionDefaultsKey) }
+    }
 
     // Launcher UI controls
     private var connectAddressField: NSTextField?
@@ -100,6 +112,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         captureItem.keyEquivalentModifierMask = [.control, .option, .command]
         windowMenu.addItem(captureItem)
         self.inputCaptureMenuItem = captureItem
+        let matchItem = NSMenuItem(
+            title: "Match Remote Resolution to This Screen",
+            action: #selector(toggleMatchResolutionAction(_:)),
+            keyEquivalent: ""
+        )
+        matchItem.state = matchRemoteResolution ? .on : .off
+        windowMenu.addItem(matchItem)
+        self.matchResolutionMenuItem = matchItem
         windowMenuItem.submenu = windowMenu
 
         NSApp.mainMenu = mainMenu
@@ -119,6 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setWindowSize(width: CGFloat, height: CGFloat, resizable: Bool) {
+        // Drop any aspect-ratio lock left over from a remote session.
+        window.contentResizeIncrements = NSSize(width: 1, height: 1)
         if resizable {
             window.styleMask.insert(.resizable)
         } else {
@@ -541,6 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.clientBaseTitle = "RemoteDesk — \(hostName) (\(width)x\(height))"
                 self.refreshInputCaptureUI()
                 self.remoteView?.setVideoDimensions(width: Int(width), height: Int(height))
+                self.fitWindowToRemote(width: Int(width), height: Int(height))
             }
         }
 
@@ -561,7 +584,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
+        remoteVideoSize = nil
+        lastSentDisplayInfo = nil
+        sendClientDisplayInfo() // delivered once the host has answered
         client.start()
+    }
+
+    // MARK: - Fitting the remote screen to this one
+
+    /// Tells the host about the screen the remote view is on: the host
+    /// switches its resolution to the closest match (when enabled) and sizes
+    /// the stream to it, so full screen fills this display edge to edge.
+    private func sendClientDisplayInfo() {
+        guard let client = clientController, let screen = window.screen ?? NSScreen.main else { return }
+        // Full-screen windows sit below the camera housing on notched Macs.
+        let width = Double(screen.frame.width)
+        let height = Double(screen.frame.height - screen.safeAreaInsets.top)
+        let scale = Double(screen.backingScaleFactor)
+        guard width > 0, height > 0, scale > 0 else { return }
+        let info = Messages.DisplayInfo(
+            pointWidth: UInt32(width.rounded()),
+            pointHeight: UInt32(height.rounded()),
+            pixelWidth: UInt32((width * scale).rounded()),
+            pixelHeight: UInt32((height * scale).rounded()),
+            matchResolution: matchRemoteResolution
+        )
+        guard info != lastSentDisplayInfo else { return }
+        lastSentDisplayInfo = info
+        client.sendDisplayInfo(info)
+    }
+
+    /// Locks the window to the remote screen's aspect ratio (no black bars
+    /// in windowed mode) and resizes it to fit this screen.
+    private func fitWindowToRemote(width: Int, height: Int) {
+        guard width > 0, height > 0 else { return }
+        remoteVideoSize = NSSize(width: width, height: height)
+        guard !window.styleMask.contains(.fullScreen) else { return }
+        window.contentAspectRatio = NSSize(width: width, height: height)
+        guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let content = window.contentRect(forFrameRect: window.frame).size
+        let titlebarHeight = window.frame.height - content.height
+        let aspect = CGFloat(width) / CGFloat(height)
+        var contentWidth = min(content.width, visible.width * 0.92)
+        var contentHeight = contentWidth / aspect
+        let maxHeight = visible.height * 0.92 - titlebarHeight
+        if contentHeight > maxHeight {
+            contentHeight = maxHeight
+            contentWidth = contentHeight * aspect
+        }
+        var frame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: contentWidth.rounded(), height: contentHeight.rounded()))
+        frame.origin.x = visible.midX - frame.width / 2
+        frame.origin.y = visible.midY - frame.height / 2
+        window.setFrame(frame, display: true, animate: true)
+    }
+
+    @objc private func toggleMatchResolutionAction(_ sender: Any?) {
+        matchRemoteResolution.toggle()
+        matchResolutionMenuItem?.state = matchRemoteResolution ? .on : .off
+        sendClientDisplayInfo()
+    }
+
+    func windowDidChangeScreen(_ notification: Notification) {
+        sendClientDisplayInfo()
+    }
+
+    /// Full screen on the client: the Dock is hidden outright, so the
+    /// bottom and side edges belong to the remote Mac (its own Dock appears
+    /// there). Only the top edge reveals anything locally — the menu bar and
+    /// the title bar with the exit-full-screen / close buttons.
+    func window(_ window: NSWindow, willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []) -> NSApplication.PresentationOptions {
+        guard clientController != nil else { return proposedOptions }
+        return [.fullScreen, .autoHideMenuBar, .hideDock]
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        guard clientController != nil else { return }
+        // The full-screen window takes the whole screen; aspect-fit is
+        // handled by the video layer.
+        window.contentResizeIncrements = NSSize(width: 1, height: 1)
     }
 
     // MARK: - Input Capture ("all input goes to the remote")
@@ -606,9 +706,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowDidEnterFullScreen(_ notification: Notification) {
         guard clientController != nil else { return }
         setInputCapture(true)
+        if inputGrabber?.isActive == true {
+            remoteView?.showHint("Keyboard and trackpad gestures now go to the remote Mac — move the pointer to the top edge to exit full screen or close · Ctrl+Opt+Cmd+G release · Ctrl+Opt+Cmd+Q disconnect")
+        }
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
+        if clientController != nil, let size = remoteVideoSize {
+            window.contentAspectRatio = size
+        }
         guard let grabber = inputGrabber, grabber.isActive else { return }
         grabber.stop()
         refreshInputCaptureUI()
@@ -619,12 +725,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if menuItem.action == #selector(toggleInputCaptureAction(_:)) {
             return inputGrabber != nil
         }
+        if menuItem.action == #selector(toggleMatchResolutionAction(_:)) {
+            menuItem.state = matchRemoteResolution ? .on : .off
+            return true
+        }
         return true
     }
 
     private func disconnectClient() {
         inputGrabber?.stop()
         inputGrabber = nil
+        remoteVideoSize = nil
+        lastSentDisplayInfo = nil
         clientController?.stop()
         clientController = nil
         remoteView = nil

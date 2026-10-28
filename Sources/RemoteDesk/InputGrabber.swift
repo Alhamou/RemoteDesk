@@ -10,10 +10,11 @@ import CoreGraphics
 /// the remote Mac instead of this one.
 ///
 /// Trackpad gesture events (the swipes macOS uses to switch Spaces /
-/// trigger Mission Control) are swallowed locally as well; they cannot be
-/// forwarded with the current protocol — switch the remote's desktops via
-/// the on-screen buttons in RemoteView or the forwarded keyboard
-/// equivalents (Ctrl+←/→, Ctrl+↑…).
+/// trigger Mission Control / App Exposé, pinches…) are swallowed locally and
+/// forwarded raw to the host, which replays them — so the gestures act on
+/// the remote Mac exactly as this Mac's trackpad settings produce them.
+/// Hosts too old to understand them simply ignore them; the forwarded
+/// keyboard equivalents (Ctrl+←/→, Ctrl+↑…) keep working either way.
 ///
 /// Two combos are reserved and never forwarded:
 ///   - Ctrl+Opt+Cmd+G — release input (end capture mode)
@@ -40,14 +41,14 @@ final class InputGrabber {
     private var runLoopSource: CFRunLoopSource?
 
     /// keyDown = 10, keyUp = 11, flagsChanged = 12; 29 is kCGEventGesture
-    /// (private constant, referenced numerically on purpose).
+    /// and 30 kCGSEventDockControl (private constants, referenced
+    /// numerically on purpose — see InputInjector.gestureEventTypes).
     private static let eventMask: CGEventMask =
         (1 << CGEventType.keyDown.rawValue)
         | (1 << CGEventType.keyUp.rawValue)
         | (1 << CGEventType.flagsChanged.rawValue)
         | (1 << 29)
-
-    private static let gestureType = CGEventType(rawValue: 29)
+        | (1 << 30)
 
     /// Sticky modifier state bits that would break the reserved-combo match.
     private static let noiseRaw: UInt64 =
@@ -181,11 +182,12 @@ final class InputGrabber {
             return nil
 
         default:
-            // Trackpad gestures (Spaces swipes, Mission Control pinches…):
-            // never forwarded, and never acted on locally while captured.
-            // Switch the remote's desktops with the on-screen buttons in
-            // RemoteView or the forwarded Ctrl+arrow keys instead.
-            if type == Self.gestureType, isActive {
+            // Trackpad gestures (Spaces swipes, Mission Control, pinches…):
+            // never acted on locally while captured; replayed on the host.
+            if InputInjector.gestureEventTypes.contains(type.rawValue), isActive {
+                if shouldCapture?() ?? true, let data = event.data {
+                    controller?.sendGesture(eventData: [UInt8](data as Data))
+                }
                 return nil
             }
             return Unmanaged.passRetained(event)

@@ -27,7 +27,9 @@ RemoteDesk allows you to seamlessly share one Mac's display and control it from 
 - **⚡ Ultra-Low Latency Streaming**: Custom binary TCP protocol with zero B-frames and adaptive congestion control (hysteresis-based keyframe recovery).
 - **🎯 Full Input Forwarding**: High-precision mouse cursor movement, left/right/middle clicks, dual-axis pixel-accurate scrolling, and virtual keyboard keycodes.
 - **🖥️ Full-Screen "Capture All Input" Mode**: When entering full screen, RemoteDesk intercepts system shortcuts (`Cmd+Tab`, `Cmd+Space`, Mission Control) before macOS handles them locally, forwarding them directly to the remote host.
-- **🎛️ Spaces Switching**: Forwarded `Ctrl+arrow` keys switch virtual desktops (Spaces) on the host (trackpad swipes are blocked locally during input capture).
+- **🎛️ Trackpad Gestures & Spaces**: In full screen, Spaces swipes, Mission Control, App Exposé and pinches act on the remote Mac (following your trackpad settings); forwarded `Ctrl+arrow` keys work too.
+- **📐 Fit Remote to This Screen**: The host switches to the resolution that best matches the client's display, so full screen fills it edge to edge — restored automatically when you disconnect (*Window → Match Remote Resolution to This Screen*).
+- **🧭 Clean Full-Screen Edges**: The local Dock stays hidden; bottom and side edges reach the remote Mac, and only the top edge reveals the local menu bar and window buttons.
 - **📋 Bidirectional Clipboard Sync**: Automatically synchronizes text copied to the clipboard between both Macs in real time with circular loop suppression.
 - **🔍 Zero-Config Discovery**: Advertises and discovers hosts automatically on your Wi-Fi/Ethernet subnet using Bonjour mDNS (`_remotedesk._tcp`), or connect directly via IP.
 - **📦 Zero Third-Party Dependencies**: 100% native Swift relying strictly on macOS system frameworks (`ScreenCaptureKit`, `VideoToolbox`, `Network.framework`, `AppKit`).
@@ -120,6 +122,7 @@ Launch `RemoteDesk.app` on both Macs.
 | `Ctrl+Opt+Cmd+G` | Toggle Input Capture | Manually engages/releases interception of system shortcuts. |
 | `Ctrl+Opt+Cmd+Q` | Disconnect | Emergency disconnect shortcut (never forwarded to the host). |
 | `Ctrl+Left / Right` | Switch Desktop | Switches virtual desktops (Spaces) on the remote Mac. |
+| Pointer to top edge (full screen) | Local Controls | Reveals the local menu bar and window buttons (exit full screen / close). |
 
 ---
 

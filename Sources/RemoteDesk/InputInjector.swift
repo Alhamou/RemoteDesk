@@ -27,8 +27,30 @@ final class InputInjector {
             cgButton = .center
         }
         guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: lastLocation, mouseButton: cgButton) else { return }
+        if button > 2 {
+            // Side buttons (back / forward, Mission Control mappings…) keep
+            // their real number so the host's own button settings apply.
+            event.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button))
+        }
         event.flags = CGEventFlags(rawValue: flags)
         event.post(tap: .cghidEventTap)
+    }
+
+    /// kCGEventGesture / kCGSEventDockControl — private event types that
+    /// carry trackpad gestures (Spaces swipes, Mission Control, App Exposé,
+    /// pinches). Referenced numerically on purpose.
+    static let gestureEventTypes: Set<UInt32> = [29, 30]
+
+    /// Replays a raw gesture event captured on the client, so the host's
+    /// Dock and apps react as if its own trackpad had been used. Anything
+    /// that does not decode to a gesture event type is dropped.
+    func gesture(eventData: [UInt8]) {
+        let data = Data(eventData) as CFData
+        guard let event = CGEvent(withDataAllocator: kCFAllocatorDefault, data: data),
+              Self.gestureEventTypes.contains(event.type.rawValue) else { return }
+        // The captured location is in the client's screen space.
+        event.location = lastLocation
+        event.post(tap: .cgSessionEventTap)
     }
 
     func scroll(dx: Float, dy: Float, flags: UInt64) {
@@ -50,7 +72,12 @@ final class InputInjector {
         let bounds = CGDisplayBounds(CGMainDisplayID())
         let nx = CGFloat(min(max(x, 0), 1))
         let ny = CGFloat(min(max(y, 0), 1))
-        return CGPoint(x: bounds.origin.x + nx * bounds.width, y: bounds.origin.y + ny * bounds.height)
+        // 1.0 lands on the last pixel row / column (where the Dock and hot
+        // corners trigger), never on a neighbouring display.
+        return CGPoint(
+            x: min(bounds.origin.x + nx * bounds.width, bounds.maxX - 1),
+            y: min(bounds.origin.y + ny * bounds.height, bounds.maxY - 1)
+        )
     }
 
     private static func clampWheel(_ value: Float) -> Int {

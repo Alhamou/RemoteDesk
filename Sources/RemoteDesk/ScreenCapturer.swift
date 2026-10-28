@@ -17,7 +17,9 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         super.init()
     }
 
-    func start(fps: Int, maxDimension: Int, completion: @escaping (Result<(Int, Int), Error>) -> Void) {
+    /// `fitWithin`: the client's screen in pixels, when known — the stream
+    /// is never made larger than that (see DisplayFit.streamSize).
+    func start(fps: Int, maxDimension: Int, fitWithin: (width: Int, height: Int)? = nil, completion: @escaping (Result<(Int, Int), Error>) -> Void) {
         guard !running else {
             completion(.failure(CaptureError.alreadyRunning))
             return
@@ -39,7 +41,7 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
                 guard let display = content.displays.first(where: { $0.displayID == mainID }) ?? content.displays.first else {
                     throw CaptureError.noDisplay
                 }
-                let size = ScreenCapturer.targetSize(display: display, maxDimension: maxDimension)
+                let size = ScreenCapturer.targetSize(display: display, maxDimension: maxDimension, fitWithin: fitWithin)
                 let configuration = SCStreamConfiguration()
                 configuration.width = size.width
                 configuration.height = size.height
@@ -52,6 +54,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
                 let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
                 try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: self.queue)
                 try await stream.startCapture()
+                guard self.running else {
+                    // stop() was called while the stream was starting.
+                    try? await stream.stopCapture()
+                    return
+                }
                 self.stream = stream
                 Log.info("capturing display \(display.displayID) at \(size.width)x\(size.height) @\(clampedFps)fps")
                 completion(.success((size.width, size.height)))
@@ -77,21 +84,39 @@ final class ScreenCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private static func targetSize(display: SCDisplay, maxDimension: Int) -> (width: Int, height: Int) {
-        let pixelWidth = CGDisplayPixelsWide(display.displayID)
-        let pixelHeight = CGDisplayPixelsHigh(display.displayID)
-        let baseWidth = pixelWidth > 0 ? pixelWidth : display.width
-        let baseHeight = pixelHeight > 0 ? pixelHeight : display.height
-        var width = baseWidth
-        var height = baseHeight
-        let longest = max(width, height)
-        if maxDimension > 0 && longest > maxDimension {
-            let scale = Double(maxDimension) / Double(longest)
-            width = Int((Double(width) * scale).rounded())
-            height = Int((Double(height) * scale).rounded())
+    private static func targetSize(display: SCDisplay, maxDimension: Int, fitWithin: (width: Int, height: Int)?) -> (width: Int, height: Int) {
+        let source = sourcePixelSize(displayID: display.displayID)
+            ?? (width: display.width, height: display.height)
+        return DisplayFit.streamSize(
+            sourceWidth: source.width,
+            sourceHeight: source.height,
+            maxDimension: maxDimension,
+            fitWidth: fitWithin?.width,
+            fitHeight: fitWithin?.height
+        )
+    }
+
+    /// The stream size a capture of `displayID` would use right now.
+    static func expectedSize(displayID: CGDirectDisplayID, maxDimension: Int, fitWithin: (width: Int, height: Int)?) -> (width: Int, height: Int)? {
+        guard let source = sourcePixelSize(displayID: displayID) else { return nil }
+        return DisplayFit.streamSize(
+            sourceWidth: source.width,
+            sourceHeight: source.height,
+            maxDimension: maxDimension,
+            fitWidth: fitWithin?.width,
+            fitHeight: fitWithin?.height
+        )
+    }
+
+    /// Real backing pixels of the display's current mode (2x the point size
+    /// on Retina / HiDPI modes), so Retina clients get a sharp picture.
+    private static func sourcePixelSize(displayID: CGDirectDisplayID) -> (width: Int, height: Int)? {
+        if let mode = CGDisplayCopyDisplayMode(displayID), mode.pixelWidth > 0, mode.pixelHeight > 0 {
+            return (mode.pixelWidth, mode.pixelHeight)
         }
-        width = max(2, width & ~1)
-        height = max(2, height & ~1)
+        let width = CGDisplayPixelsWide(displayID)
+        let height = CGDisplayPixelsHigh(displayID)
+        guard width > 0, height > 0 else { return nil }
         return (width, height)
     }
 }
@@ -110,7 +135,9 @@ extension ScreenCapturer {
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         queue.async { [weak self] in
-            guard let self else { return }
+            // A stream we replaced or stopped on purpose (e.g. around a
+            // display mode switch) is not an error.
+            guard let self, stream === self.stream else { return }
             Log.warn("capture stream stopped: \(error)")
             self.running = false
             self.onError?(error)

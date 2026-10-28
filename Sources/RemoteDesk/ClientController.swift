@@ -21,6 +21,8 @@ final class ClientController {
     private var hostWidth: UInt32 = 0
     private var hostHeight: UInt32 = 0
     private var hostName: String = ""
+    private var displayInfo: Messages.DisplayInfo?
+    private var displayInfoSent = false
 
     // UI Callbacks
     var onConnected: ((_ width: UInt32, _ height: UInt32, _ hostName: String) -> Void)?
@@ -236,6 +238,11 @@ final class ClientController {
                 hostName = ack.name
                 Log.info("connected to '\(ack.name)' (\(ack.width)x\(ack.height))")
                 startPingTimer()
+                // The host re-sends helloAck after every resolution change;
+                // only the first one needs the display info.
+                if !displayInfoSent {
+                    sendDisplayInfoIfReady()
+                }
                 DispatchQueue.main.async { [weak self] in
                     self?.onConnected?(ack.width, ack.height, ack.name)
                 }
@@ -369,6 +376,34 @@ final class ClientController {
             if let payload = try? Messages.encodeKey(msg) {
                 _ = peer.send(type: .key, payload: payload)
             }
+        }
+    }
+
+    /// Forwards a raw trackpad gesture event (see InputGrabber).
+    func sendGesture(eventData: [UInt8]) {
+        queue.async { [weak self] in
+            guard let self, let peer = self.peer else { return }
+            if let payload = try? Messages.encodeGesture(Messages.Gesture(eventData: eventData)) {
+                _ = peer.send(type: .gesture, payload: payload)
+            }
+        }
+    }
+
+    /// Tells the host which display the remote view is shown on, so it can
+    /// match its resolution and size the stream to it.
+    func sendDisplayInfo(_ info: Messages.DisplayInfo) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.displayInfo = info
+            self.sendDisplayInfoIfReady()
+        }
+    }
+
+    private func sendDisplayInfoIfReady() {
+        guard let peer, let info = displayInfo, hostWidth > 0 else { return }
+        if let payload = try? Messages.encodeDisplayInfo(info) {
+            displayInfoSent = true
+            _ = peer.send(type: .displayInfo, payload: payload)
         }
     }
 

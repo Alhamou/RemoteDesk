@@ -136,4 +136,43 @@ final class ProtocolTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Display matching & gestures
+
+    func testDisplayInfoEncodingAndDecoding() throws {
+        let original = Messages.DisplayInfo(
+            pointWidth: 1470, pointHeight: 924,
+            pixelWidth: 2940, pixelHeight: 1848,
+            matchResolution: true
+        )
+        let bytes = try Messages.encodeDisplayInfo(original)
+        XCTAssertEqual(try Messages.parseDisplayInfo(bytes), original)
+
+        var off = original
+        off.matchResolution = false
+        XCTAssertEqual(try Messages.parseDisplayInfo(try Messages.encodeDisplayInfo(off)), off)
+    }
+
+    func testDisplayInfoRejectsAbsurdSizes() throws {
+        let bogus = Messages.DisplayInfo(pointWidth: 100_000, pointHeight: 10, pixelWidth: 10, pixelHeight: 10, matchResolution: true)
+        XCTAssertThrowsError(try Messages.parseDisplayInfo(try Messages.encodeDisplayInfo(bogus)))
+        XCTAssertThrowsError(try Messages.parseDisplayInfo([1, 0, 0]))
+    }
+
+    func testGestureEncodingAndDecoding() throws {
+        let original = Messages.Gesture(eventData: Array(0..<200).map { UInt8($0) })
+        let bytes = try Messages.encodeGesture(original)
+        XCTAssertEqual(try Messages.parseGesture(bytes), original)
+        XCTAssertThrowsError(try Messages.parseGesture([]))
+        XCTAssertThrowsError(try Messages.parseGesture([UInt8](repeating: 0, count: Messages.maxGestureEventBytes + 1)))
+    }
+
+    func testUnknownMessageTypesStillFrame() throws {
+        // Older peers must be able to skip message types they don't know.
+        var decoder = FrameDecoder()
+        decoder.append(encodeFrame(type: .gesture, payload: [1, 2, 3]))
+        let frame = try decoder.next()
+        XCTAssertEqual(frame?.type, 15)
+        XCTAssertEqual(frame?.payload, [1, 2, 3])
+    }
 }

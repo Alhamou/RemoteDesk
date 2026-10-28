@@ -38,6 +38,8 @@ enum MessageType: UInt8 {
     case requestKeyframe = 11
     case clipboard = 12
     case bye = 13
+    case displayInfo = 14
+    case gesture = 15
 }
 
 struct ByteWriter {
@@ -236,6 +238,27 @@ enum Messages {
         var text: String
     }
 
+    /// Client → Host: the client display the remote view lives on, so the
+    /// host can match its resolution / aspect ratio and size the stream.
+    /// Sizes of 0 mean "unknown". Older hosts ignore this message.
+    struct DisplayInfo: Equatable {
+        var pointWidth: UInt32
+        var pointHeight: UInt32
+        var pixelWidth: UInt32
+        var pixelHeight: UInt32
+        /// Ask the host to switch its display mode to match this display.
+        var matchResolution: Bool
+    }
+
+    /// Client → Host: a raw trackpad gesture / Dock-control CGEvent
+    /// (CGEvent.data), replayed on the host. Older hosts ignore it.
+    struct Gesture: Equatable {
+        var eventData: [UInt8]
+    }
+
+    static let maxGestureEventBytes = 64 * 1024
+    static let maxDisplayDimension: UInt32 = 32768
+
     static func encodeHello(_ message: Hello) throws -> [UInt8] {
         var writer = ByteWriter()
         writer.u16(protocolVersion)
@@ -312,6 +335,24 @@ enum Messages {
         var writer = ByteWriter()
         writer.u8(message.kind)
         try writer.string(message.text)
+        return writer.bytes
+    }
+
+    static func encodeDisplayInfo(_ message: DisplayInfo) throws -> [UInt8] {
+        var writer = ByteWriter()
+        writer.u8(message.matchResolution ? 1 : 0)
+        writer.u32(message.pointWidth)
+        writer.u32(message.pointHeight)
+        writer.u32(message.pixelWidth)
+        writer.u32(message.pixelHeight)
+        return writer.bytes
+    }
+
+    static func encodeGesture(_ message: Gesture) throws -> [UInt8] {
+        guard !message.eventData.isEmpty else { throw ProtocolError.malformed }
+        guard message.eventData.count <= maxGestureEventBytes else { throw ProtocolError.tooLarge }
+        var writer = ByteWriter()
+        writer.raw(message.eventData)
         return writer.bytes
     }
 
@@ -396,5 +437,30 @@ enum Messages {
         let kind = try reader.u8()
         let text = try reader.string()
         return Clipboard(kind: kind, text: text)
+    }
+
+    static func parseDisplayInfo(_ payload: [UInt8]) throws -> DisplayInfo {
+        var reader = ByteReader(payload)
+        let flags = try reader.u8()
+        let pointWidth = try reader.u32()
+        let pointHeight = try reader.u32()
+        let pixelWidth = try reader.u32()
+        let pixelHeight = try reader.u32()
+        for value in [pointWidth, pointHeight, pixelWidth, pixelHeight] where value > maxDisplayDimension {
+            throw ProtocolError.tooLarge
+        }
+        return DisplayInfo(
+            pointWidth: pointWidth,
+            pointHeight: pointHeight,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            matchResolution: flags & 1 != 0
+        )
+    }
+
+    static func parseGesture(_ payload: [UInt8]) throws -> Gesture {
+        guard !payload.isEmpty else { throw ProtocolError.malformed }
+        guard payload.count <= maxGestureEventBytes else { throw ProtocolError.tooLarge }
+        return Gesture(eventData: payload)
     }
 }

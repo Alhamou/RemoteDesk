@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Fit Remote to This Screen**: the client tells the host which display it is on; the host switches its resolution to the closest-matching mode (aspect ratio first) so full screen fills edge to edge, and restores the original resolution when the client leaves (or if RemoteDesk quits). Toggle: *Window → Match Remote Resolution to This Screen* (on by default).
+- **Trackpad gestures in full screen**: Spaces swipes, Mission Control, App Exposé and pinches are forwarded raw and replayed on the host, following this Mac's trackpad settings.
+- **Full-screen edges**: the local Dock never appears in full screen — the bottom and side edges belong to the remote Mac; only the top edge reveals the local menu bar and window buttons (exit full screen / close).
+
+### Changed
+- The stream is captured at the host display's real pixel resolution (sharp on Retina clients), capped by `--max-dim` and by the client's screen size.
+- Windowed mode keeps the remote screen's aspect ratio (no black bars).
+- Mouse side buttons (back / forward) are forwarded with their real button number instead of as a middle click.
+
+### Fixed
+- Removed the implicit 0.25 s cross-fade on every decoded frame (lower display latency).
+- The pointer can reach the remote's very last pixel row/column, so its Dock and hot corners trigger from the client.
+
 ## [1.0.0] - 2026-10-18
 
 ### Added
