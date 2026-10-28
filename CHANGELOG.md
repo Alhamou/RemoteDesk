@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Release builds are signed with a stable certificate (when the `MACOS_CERT_P12_BASE64` / `MACOS_CERT_PASSWORD` secrets are set), so macOS keeps RemoteDesk's Accessibility and Screen Recording permissions across updates instead of asking again after each one.
 - The app bundle is built in `build/RemoteDesk.noindex/` so the build copy does not show up in Spotlight next to the installed app.
 
 ## [1.1.0] - 2026-10-28

@@ -28,43 +28,6 @@ jobs:
         run: |
           brew install create-dmg
 
-      # Signing every release with the same certificate keeps the app's code
-      # identity stable, so macOS keeps its Accessibility / Screen Recording
-      # grants across updates. Without the secrets the build is ad-hoc signed
-      # and users must re-grant permissions after every update.
-      - name: Import Signing Certificate
-        env:
-          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-        run: |
-          if [[ -z "$CERT_P12_BASE64" ]]; then
-            echo "::warning::MACOS_CERT_P12_BASE64 is not set; the release will be ad-hoc signed and permissions will reset on every update."
-            exit 0
-          fi
-          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
-          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          curl -fsSL -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 3600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/AppleWWDRCAG3.cer" -k "$KEYCHAIN"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/cert.p12"
-
-          IDENTITY=$(security find-identity -p codesigning -v "$KEYCHAIN" | awk '/Apple Development|Developer ID Application/ {print $2; exit}')
-          if [[ -z "$IDENTITY" ]]; then
-            echo "::error::No valid signing identity in the imported certificate (expired or revoked?)"
-            security find-identity -p codesigning "$KEYCHAIN"
-            exit 1
-          fi
-          echo "Signing with identity $IDENTITY"
-          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
-
       - name: Run Self-Tests & E2E Validation
         run: |
           swift test
@@ -131,10 +94,3 @@ jobs:
             build/RemoteDesk-${{ steps.get_version.outputs.VERSION }}.dmg.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Remove Signing Keychain
-        if: always()
-        run: |
-          if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
-            security delete-keychain "$SIGNING_KEYCHAIN" || true
-          fi

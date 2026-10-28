@@ -56,31 +56,6 @@ open build/RemoteDesk.noindex/RemoteDesk.app
 
 ---
 
-## Release Signing
-
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds and publishes the DMG. To keep users' Accessibility and Screen Recording permissions across updates, every release must be signed with the same certificate. Ad-hoc signed builds get a new code identity each time, so macOS asks for the permissions again after every update and input capture (keyboard + trackpad gestures) stops working until they are re-granted.
-
-The workflow signs with a certificate from two repository secrets (Settings → Secrets and variables → Actions):
-
-| Secret | Value |
-|:---|:---|
-| `MACOS_CERT_P12_BASE64` | The signing certificate and its private key exported as `.p12`, base64-encoded |
-| `MACOS_CERT_PASSWORD` | The password chosen when exporting the `.p12` |
-
-To set them up from a Mac that has the certificate:
-
-1. In **Keychain Access → My Certificates**, right-click the `Apple Development: …` (or `Developer ID Application: …`) certificate, choose **Export**, and save it as `cert.p12` with a password.
-2. Upload it and its password, then delete the exported file:
-   ```bash
-   base64 -i cert.p12 | gh secret set MACOS_CERT_P12_BASE64
-   gh secret set MACOS_CERT_PASSWORD
-   rm cert.p12
-   ```
-
-Without these secrets the release still builds, ad-hoc signed, and the workflow logs a warning. When the certificate expires, export the renewed one and update both secrets. Local builds (`./scripts/make-app.sh`) sign with the same certificate when it is in your keychain, so local and released builds share their permissions.
-
----
-
 ## Code Guidelines & Philosophy
 
 1. **Zero External Dependencies**: We intentionally do not use third-party libraries. All networking, encoding, decoding, capture, and UI logic relies solely on Apple's standard system frameworks (`ScreenCaptureKit`, `VideoToolbox`, `Network.framework`, `AppKit`).
