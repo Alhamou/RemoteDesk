@@ -12,14 +12,20 @@ INSTALL="${INSTALL:-0}"
 
 echo "==> Building RemoteDesk v${VERSION} (universal arm64 + x86_64)..."
 
-# Build universal release binary using lipo
-swift build -c release --arch arm64
-swift build -c release --arch x86_64
-
+# Build universal release binary using lipo. Each slice is copied out right
+# after its build: the output directory differs between Swift versions (ask
+# SwiftPM with --show-bin-path), and some layouts share one directory for
+# every architecture, so the next build would overwrite it.
 mkdir -p .build/universal
+for ARCH in arm64 x86_64; do
+    swift build -c release --arch "$ARCH"
+    BIN_DIR="$(swift build -c release --arch "$ARCH" --show-bin-path)"
+    cp "$BIN_DIR/RemoteDesk" ".build/universal/RemoteDesk-$ARCH"
+done
 lipo -create -output .build/universal/RemoteDesk \
-    .build/arm64-apple-macosx/release/RemoteDesk \
-    .build/x86_64-apple-macosx/release/RemoteDesk
+    .build/universal/RemoteDesk-arm64 \
+    .build/universal/RemoteDesk-x86_64
+lipo -info .build/universal/RemoteDesk
 
 APP="build/RemoteDesk.app"
 BIN=".build/universal/RemoteDesk"
